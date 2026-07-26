@@ -1,0 +1,149 @@
+services:
+  postgres:
+    image: "${E2E_POSTGRES_IMAGE:-postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193}"
+    environment:
+      POSTGRES_DB: relay
+      POSTGRES_USER: relay
+      POSTGRES_PASSWORD: relay-e2e-password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U relay -d relay"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    networks: [relay-e2e]
+
+  upstream:
+    image: "${E2E_INTERNAL_MOCK_IMAGE:?mock image is required}"
+    command:
+      - --addr=:9447
+      - --tls-cert-file=/fixtures/upstream.crt
+      - --tls-key-file=/fixtures/upstream.key
+      - --service-ca-file=/fixtures/service-ca.crt
+      - --config-file=/fixtures/mock-config.json
+    volumes:
+      - type: bind
+        source: "${E2E_INTERNAL_FIXTURES_DIR:?fixtures directory is required}"
+        target: /fixtures
+        read_only: true
+    ports:
+      - target: 9447
+        published: "0"
+        host_ip: 127.0.0.1
+    networks: [relay-e2e]
+
+  relay-coordinator:
+    image: "${E2E_COORDINATOR_IMAGE:?coordinator image is required}"
+    command:
+      - --grpc-addr=:9445
+      - --http-addr=:7078
+      - --postgres-dsn=postgres://relay:relay-e2e-password@postgres:5432/relay?sslmode=disable
+      - --coordinator-url=https://upstream:9447
+      - --endpoints-file=/fixtures/endpoints.json
+      - --service-tls-provider=development_file
+      - --service-ca-file=/fixtures/service-ca.crt
+      - --service-cert-file=/fixtures/relay-coordinator.crt
+      - --service-key-file=/fixtures/relay-coordinator.key
+      - --coordinator-server-name=upstream
+    volumes:
+      - type: bind
+        source: "${E2E_INTERNAL_FIXTURES_DIR:?fixtures directory is required}"
+        target: /fixtures
+        read_only: true
+    ports:
+      - target: 9445
+        published: "0"
+        host_ip: 127.0.0.1
+      - target: 7078
+        published: "0"
+        host_ip: 127.0.0.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      upstream:
+        condition: service_started
+    networks: [relay-e2e]
+
+  relay-a:
+    image: "${E2E_RELAY_IMAGE:?relay image is required}"
+    command: &relay-command-a
+      - --addr=:9443
+      - --metrics-addr=:9090
+      - --relay-id=relay-a
+      - --boot-id=${E2E_INTERNAL_RELAY_A_BOOT_ID:-boot-a-1}
+      - --mesh-addr=relay-a:9444
+      - --mesh-listen-addr=:9444
+      - --relay-coordinator-addr=relay-coordinator:9445
+      - --service-tls-provider=development_file
+      - --tls-cert-file=/fixtures/relay-a-public.crt
+      - --tls-key-file=/fixtures/relay-a-public.key
+      - --service-ca-file=/fixtures/service-ca.crt
+      - --service-cert-file=/fixtures/relay-a.crt
+      - --service-key-file=/fixtures/relay-a.key
+      - --relay-coordinator-server-name=relay-coordinator
+    volumes: &relay-volumes
+      - type: bind
+        source: "${E2E_INTERNAL_FIXTURES_DIR:?fixtures directory is required}"
+        target: /fixtures
+        read_only: true
+    ports: &relay-ports
+      - target: 9443
+        published: "0"
+        host_ip: 127.0.0.1
+      - target: 9444
+        published: "0"
+        host_ip: 127.0.0.1
+      - target: 9090
+        published: "0"
+        host_ip: 127.0.0.1
+    depends_on: &relay-dependencies
+      relay-coordinator:
+        condition: service_started
+    networks: [relay-e2e]
+
+  relay-b:
+    image: "${E2E_RELAY_IMAGE:?relay image is required}"
+    command:
+      - --addr=:9443
+      - --metrics-addr=:9090
+      - --relay-id=relay-b
+      - --boot-id=${E2E_INTERNAL_RELAY_B_BOOT_ID:-boot-b-1}
+      - --mesh-addr=relay-b:9444
+      - --mesh-listen-addr=:9444
+      - --relay-coordinator-addr=relay-coordinator:9445
+      - --service-tls-provider=development_file
+      - --tls-cert-file=/fixtures/relay-b-public.crt
+      - --tls-key-file=/fixtures/relay-b-public.key
+      - --service-ca-file=/fixtures/service-ca.crt
+      - --service-cert-file=/fixtures/relay-b.crt
+      - --service-key-file=/fixtures/relay-b.key
+      - --relay-coordinator-server-name=relay-coordinator
+    volumes: *relay-volumes
+    ports: *relay-ports
+    depends_on: *relay-dependencies
+    networks: [relay-e2e]
+
+  relay-c:
+    image: "${E2E_RELAY_IMAGE:?relay image is required}"
+    command:
+      - --addr=:9443
+      - --metrics-addr=:9090
+      - --relay-id=relay-c
+      - --boot-id=${E2E_INTERNAL_RELAY_C_BOOT_ID:-boot-c-1}
+      - --mesh-addr=relay-c:9444
+      - --mesh-listen-addr=:9444
+      - --relay-coordinator-addr=relay-coordinator:9445
+      - --service-tls-provider=development_file
+      - --tls-cert-file=/fixtures/relay-c-public.crt
+      - --tls-key-file=/fixtures/relay-c-public.key
+      - --service-ca-file=/fixtures/service-ca.crt
+      - --service-cert-file=/fixtures/relay-c.crt
+      - --service-key-file=/fixtures/relay-c.key
+      - --relay-coordinator-server-name=relay-coordinator
+    volumes: *relay-volumes
+    ports: *relay-ports
+    depends_on: *relay-dependencies
+    networks: [relay-e2e]
+
+networks:
+  relay-e2e:
+    internal: false

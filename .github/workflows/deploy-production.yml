@@ -1,0 +1,148 @@
+name: Deploy production
+
+"on":
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing immutable v1.x release tag
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: endlessnet-relay-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Ensure supported Ansible Core
+        shell: bash
+        run: ./scripts/setup-production-ansible.sh
+
+      - name: Verify release provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_VERSION: ${{ inputs.version }}
+          DEPLOY_WORKFLOW_REF: ${{ github.event_name == 'workflow_dispatch' && github.ref || '' }}
+        shell: bash
+        run: |
+          args=(--version "$DEPLOY_VERSION")
+          if [[ -n "$DEPLOY_WORKFLOW_REF" ]]; then
+            args+=(--workflow-ref "$DEPLOY_WORKFLOW_REF")
+          fi
+          ./scripts/verify-production-provenance.sh "${args[@]}"
+
+      - name: Materialize protected deployment inputs
+        id: config
+        env:
+          DEPLOY_INVENTORY_JSON: ${{ secrets.DEPLOY_INVENTORY_JSON }}
+          RELAY_COORDINATOR_ENV: ${{ secrets.RELAY_COORDINATOR_ENV }}
+          RELAY_NODE_ENV: ${{ secrets.RELAY_NODE_ENV }}
+          RELAY_ENDPOINTS_JSON: ${{ secrets.RELAY_ENDPOINTS_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in DEPLOY_INVENTORY_JSON RELAY_COORDINATOR_ENV RELAY_NODE_ENV RELAY_ENDPOINTS_JSON; do
+            test -n "${!name}" || {
+              echo "::error::$name is required in the production environment"
+              exit 1
+            }
+          done
+          config_dir="$RUNNER_TEMP/relay-config"
+          install -d -m 0700 "$config_dir"
+          printf '%s\n' "$DEPLOY_INVENTORY_JSON" > "$config_dir/inventory.json"
+          printf '%s\n' "$RELAY_COORDINATOR_ENV" > "$config_dir/coordinator.env"
+          printf '%s\n' "$RELAY_NODE_ENV" > "$config_dir/relay.env"
+          printf '%s\n' "$RELAY_ENDPOINTS_JSON" > "$config_dir/endpoints.json"
+          chmod 0600 "$config_dir"/*
+          python3 -m json.tool "$config_dir/inventory.json" >/dev/null
+          python3 -m json.tool "$config_dir/endpoints.json" >/dev/null
+          echo "dir=$config_dir" >> "$GITHUB_OUTPUT"
+          echo "inventory=$config_dir/inventory.json" >> "$GITHUB_OUTPUT"
+
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_SSH_PRIVATE_KEY"
+          test -n "$DEPLOY_KNOWN_HOSTS"
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+
+      - name: Download immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELAY_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELAY_VERSION" =~ ^v1\.[0-9]+\.[0-9]+$ ]]
+          release="$(gh release view "$RELAY_VERSION" --json isDraft,isPrerelease --jq '[.isDraft,.isPrerelease] | @tsv')"
+          test "$release" = $'false\tfalse'
+          mkdir -p dist
+          gh release download "$RELAY_VERSION" --dir dist --clobber \
+            --pattern 'endlessnet-relay_*_linux_amd64.tar.gz' \
+            --pattern checksums.txt
+          (cd dist && sha256sum -c checksums.txt --ignore-missing)
+
+      - name: Prepare hosts
+        env:
+          ANSIBLE_REMOTE_USER: ${{ vars.DEPLOY_USER || 'root' }}
+        shell: bash
+        run: ansible-playbook -i "${{ steps.config.outputs.inventory }}" deploy/relay-prerequisites.yml
+
+      - name: Preflight all targets
+        env:
+          ANSIBLE_REMOTE_USER: ${{ vars.DEPLOY_USER || 'root' }}
+          RELAY_VERSION: ${{ inputs.version }}
+          RELAY_ARTIFACT: ${{ github.workspace }}/dist/endlessnet-relay_${{ inputs.version }}_linux_amd64.tar.gz
+          RELAY_CONFIG_DIR: ${{ steps.config.outputs.dir }}
+        shell: bash
+        run: |
+          ansible-playbook -i "${{ steps.config.outputs.inventory }}" deploy/relay.yml \
+            --extra-vars "relay_version=$RELAY_VERSION relay_artifact=$RELAY_ARTIFACT relay_config_dir=$RELAY_CONFIG_DIR relay_preflight_only=true"
+
+      - name: Deploy Relay Coordinator
+        env:
+          ANSIBLE_REMOTE_USER: ${{ vars.DEPLOY_USER || 'root' }}
+          RELAY_VERSION: ${{ inputs.version }}
+          RELAY_ARTIFACT: ${{ github.workspace }}/dist/endlessnet-relay_${{ inputs.version }}_linux_amd64.tar.gz
+          RELAY_CONFIG_DIR: ${{ steps.config.outputs.dir }}
+        shell: bash
+        run: |
+          ansible-playbook -i "${{ steps.config.outputs.inventory }}" deploy/relay.yml \
+            --limit coordinator \
+            --extra-vars "relay_version=$RELAY_VERSION relay_artifact=$RELAY_ARTIFACT relay_config_dir=$RELAY_CONFIG_DIR"
+
+      - name: Deploy Relay nodes sequentially
+        env:
+          ANSIBLE_REMOTE_USER: ${{ vars.DEPLOY_USER || 'root' }}
+          RELAY_VERSION: ${{ inputs.version }}
+          RELAY_ARTIFACT: ${{ github.workspace }}/dist/endlessnet-relay_${{ inputs.version }}_linux_amd64.tar.gz
+          RELAY_CONFIG_DIR: ${{ steps.config.outputs.dir }}
+        shell: bash
+        run: |
+          ansible-playbook -i "${{ steps.config.outputs.inventory }}" deploy/relay.yml \
+            --limit relays \
+            --extra-vars "relay_version=$RELAY_VERSION relay_artifact=$RELAY_ARTIFACT relay_config_dir=$RELAY_CONFIG_DIR"

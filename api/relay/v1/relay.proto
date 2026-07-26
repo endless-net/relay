@@ -1,0 +1,144 @@
+syntax = "proto3";
+
+package endlessnet.relay.v1;
+
+option go_package = "github.com/unng-lab/endlessnet-relay/api/relay/v1;relayv1";
+
+service RelayControl {
+  rpc RegisterInstance(RegisterInstanceRequest) returns (RegisterInstanceResponse);
+  rpc HeartbeatInstance(HeartbeatInstanceRequest) returns (HeartbeatInstanceResponse);
+  rpc AcquireSession(AcquireSessionRequest) returns (AcquireSessionResponse);
+  rpc RenewSession(RenewSessionRequest) returns (RenewSessionResponse);
+  rpc ReleaseSession(ReleaseSessionRequest) returns (ReleaseSessionResponse);
+  rpc AuthorizePeer(AuthorizePeerRequest) returns (AuthorizePeerResponse);
+}
+
+service RelayMesh {
+  rpc Connect(stream MeshMessage) returns (stream MeshMessage);
+}
+
+message Credential {
+  string algorithm = 1;
+  string key_id = 2;
+  string network_id = 3;
+  string node_id = 4;
+  int64 expires_at_unix_nano = 5;
+  string signature = 6;
+}
+
+message SigningTrustKey {
+  string key_id = 1;
+  string algorithm = 2;
+  string public_key = 3;
+  int64 not_before_unix_nano = 4;
+  int64 not_after_unix_nano = 5;
+}
+
+message SigningTrustBundle {
+  int32 version = 1;
+  string active_key_id = 2;
+  repeated SigningTrustKey keys = 3;
+}
+
+message RelayInstance {
+  string relay_id = 1;
+  string boot_id = 2;
+  string mesh_addr = 3;
+}
+
+message RegisterInstanceRequest {
+  string relay_id = 1;
+  string boot_id = 2;
+  string mesh_addr = 3;
+}
+
+message RegisterInstanceResponse {
+  repeated RelayInstance peers = 1;
+  int64 lease_expires_unix_nano = 2;
+  SigningTrustBundle relay_trust_bundle = 3;
+}
+
+message HeartbeatInstanceRequest {
+  string relay_id = 1;
+  string boot_id = 2;
+}
+
+message HeartbeatInstanceResponse {
+  repeated RelayInstance peers = 1;
+  int64 lease_expires_unix_nano = 2;
+  SigningTrustBundle relay_trust_bundle = 3;
+}
+
+message AcquireSessionRequest {
+  string relay_id = 1;
+  string boot_id = 2;
+  Credential credential = 3;
+}
+
+message AcquireSessionResponse {
+  int64 epoch = 1;
+}
+
+message RenewSessionRequest {
+  string relay_id = 1;
+  string boot_id = 2;
+  string network_id = 3;
+  string node_id = 4;
+  int64 epoch = 5;
+  Credential credential = 6;
+}
+
+message RenewSessionResponse {}
+
+message ReleaseSessionRequest {
+  string relay_id = 1;
+  string boot_id = 2;
+  string network_id = 3;
+  string node_id = 4;
+  int64 epoch = 5;
+}
+
+message ReleaseSessionResponse {}
+
+message AuthorizePeerRequest {
+  string relay_id = 1;
+  string boot_id = 2;
+  Credential credential = 3;
+  string peer_id = 4;
+  int64 source_epoch = 5;
+}
+
+message AuthorizePeerResponse {
+  string destination_relay_id = 1;
+  string destination_boot_id = 2;
+  int64 destination_epoch = 3;
+}
+
+message MeshMessage {
+  int32 protocol_version = 1;
+  oneof body {
+    MeshHello hello = 2;
+    MeshFrame frame = 3;
+    MeshPing ping = 4;
+    MeshPong pong = 5;
+  }
+}
+
+message MeshHello {
+  string relay_id = 1;
+  string boot_id = 2;
+}
+
+message MeshFrame {
+  string relay_id = 1;
+  string boot_id = 2;
+  string network_id = 3;
+  string from_node_id = 4;
+  string to_node_id = 5;
+  int64 destination_epoch = 6;
+  bytes payload = 7;
+}
+
+message MeshPing {}
+
+message MeshPong {}

@@ -1,0 +1,23 @@
+Third-party components
+======================
+
+This distribution includes Go dependencies under the following licenses:
+
+- github.com/Microsoft/go-winio — MIT
+- github.com/go-jose/go-jose/v4 — Apache-2.0 and BSD-3-Clause
+- github.com/jackc/pgpassfile — MIT
+- github.com/jackc/pgservicefile — MIT
+- github.com/jackc/pgx/v5 — MIT
+- github.com/jackc/puddle/v2 — MIT
+- github.com/spiffe/go-spiffe/v2 — Apache-2.0
+- golang.org/x/net — BSD-3-Clause
+- golang.org/x/sync — BSD-3-Clause
+- golang.org/x/sys — BSD-3-Clause
+- golang.org/x/text — BSD-3-Clause
+- google.golang.org/genproto/googleapis/rpc — Apache-2.0
+- google.golang.org/grpc — Apache-2.0
+- google.golang.org/protobuf — BSD-3-Clause
+
+Authoritative license texts and attribution are available in each dependency's
+source distribution. CI regenerates and validates the dependency license report
+for every public change.

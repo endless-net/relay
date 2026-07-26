@@ -1,0 +1,729 @@
+---
+- name: Deploy EndlessNet Relay component
+  hosts: all
+  become: true
+  serial: 1
+  vars:
+    relay_root: /opt/endlessnet-relay
+    relay_release_dir: "{{ relay_root }}/releases/{{ relay_version }}"
+    relay_deploy_state_dir: "{{ relay_root }}/deploy/{{ relay_version }}"
+    relay_unit: "{{ 'endlessnet-relay-coordinator.service' if relay_component == 'coordinator' else 'endlessnet-relay.service' }}"
+    relay_environment_file: "/etc/endlessnet-relay/{{ 'coordinator.env' if relay_component == 'coordinator' else 'relay.env' }}"
+  tasks:
+    - name: Validate required deployment inputs
+      ansible.builtin.assert:
+        that:
+          - relay_version is match('^v1\.[0-9]+\.[0-9]+$')
+          - relay_artifact | length > 0
+          - relay_config_dir | length > 0
+          - relay_component in ['coordinator', 'relay']
+          - ansible_connection == 'ssh'
+          - ansible_host is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
+          - wg_address is match('^10\.77\.0\.[0-9]{1,3}$')
+          - relay_component != 'relay' or relay_id is match('^[a-z0-9][a-z0-9-]*$')
+          - relay_component != 'relay' or relay_public_name is match('^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$')
+
+    - name: Require the production WireGuard interface and address
+      ansible.builtin.command:
+        argv: [ip, -brief, address, show, dev, wg0]
+      register: relay_wireguard_address
+      changed_when: false
+
+    - name: Validate the production WireGuard address
+      ansible.builtin.assert:
+        that:
+          - relay_wireguard_address.stdout is search(wg_address + '/24')
+
+    - name: Inspect public Relay TLS credential sources
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: true
+      loop:
+        - "/etc/letsencrypt/live/{{ relay_public_name }}/fullchain.pem"
+        - "/etc/letsencrypt/live/{{ relay_public_name }}/privkey.pem"
+      register: relay_public_tls_sources
+      when: relay_component == 'relay'
+
+    - name: Require public Relay TLS credential sources
+      ansible.builtin.assert:
+        that:
+          - relay_public_tls_sources.results | length == 2
+          - relay_public_tls_sources.results[0].stat.isreg | default(false)
+          - relay_public_tls_sources.results[1].stat.isreg | default(false)
+      when: relay_component == 'relay'
+
+    - name: Require Certbot for direct Relay certificate renewal
+      ansible.builtin.command:
+        argv: [certbot, --version]
+      changed_when: false
+      when: relay_component == 'relay'
+
+    - name: Require OpenSSL for direct Relay certificate renewal
+      ansible.builtin.command:
+        argv: [openssl, version]
+      changed_when: false
+      when: relay_component == 'relay'
+
+    - name: Require the public certificate to cover this Relay hostname
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - x509
+          - -in
+          - "/etc/letsencrypt/live/{{ relay_public_name }}/fullchain.pem"
+          - -noout
+          - -checkhost
+          - "{{ relay_public_name }}"
+      changed_when: false
+      when: relay_component == 'relay'
+
+    - name: Require at least seven days of public certificate validity
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - x509
+          - -in
+          - "/etc/letsencrypt/live/{{ relay_public_name }}/fullchain.pem"
+          - -noout
+          - -checkend
+          - "604800"
+      changed_when: false
+      when: relay_component == 'relay'
+
+    - name: Require the public certificate and private key to match
+      ansible.builtin.shell: |
+        set -euo pipefail
+        certificate_hash=$(openssl x509 \
+          -in "/etc/letsencrypt/live/{{ relay_public_name }}/fullchain.pem" \
+          -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum | awk '{print $1}')
+        key_hash=$(openssl pkey \
+          -in "/etc/letsencrypt/live/{{ relay_public_name }}/privkey.pem" \
+          -pubout -outform DER | sha256sum | awk '{print $1}')
+        test "$certificate_hash" = "$key_hash"
+      args:
+        executable: /bin/bash
+      changed_when: false
+      no_log: true
+      when: relay_component == 'relay'
+
+    - name: Finish guarded host preflight without changing production
+      ansible.builtin.meta: end_host
+      when: relay_preflight_only | default(false) | bool
+
+    - name: Create service group
+      ansible.builtin.group:
+        name: endlessnet-relay
+        system: true
+
+    - name: Create service user
+      ansible.builtin.user:
+        name: endlessnet-relay
+        group: endlessnet-relay
+        system: true
+        create_home: false
+        shell: /usr/sbin/nologin
+
+    - name: Create service data directory
+      ansible.builtin.file:
+        path: /var/lib/endlessnet-relay
+        state: directory
+        owner: endlessnet-relay
+        group: endlessnet-relay
+        mode: "0750"
+
+    - name: Inspect dedicated PostgreSQL role
+      ansible.builtin.command:
+        argv:
+          - psql
+          - --no-psqlrc
+          - --tuples-only
+          - --no-align
+          - --dbname=postgres
+          - --command=SELECT 1 FROM pg_roles WHERE rolname = 'endlessnet-relay'
+      become_user: postgres
+      register: relay_database_role
+      changed_when: false
+      when: relay_component == 'coordinator'
+
+    - name: Create dedicated peer-authenticated PostgreSQL role
+      ansible.builtin.command:
+        argv:
+          - createuser
+          - --login
+          - --no-superuser
+          - --no-createdb
+          - --no-createrole
+          - endlessnet-relay
+      become_user: postgres
+      when:
+        - relay_component == 'coordinator'
+        - relay_database_role.stdout | trim == ''
+
+    - name: Inspect dedicated Relay Coordinator database
+      ansible.builtin.command:
+        argv:
+          - psql
+          - --no-psqlrc
+          - --tuples-only
+          - --no-align
+          - --dbname=postgres
+          - --command=SELECT 1 FROM pg_database WHERE datname = 'endlessnet_relay'
+      become_user: postgres
+      register: relay_database
+      changed_when: false
+      when: relay_component == 'coordinator'
+
+    - name: Create dedicated Relay Coordinator database
+      ansible.builtin.command:
+        argv:
+          - createdb
+          - --owner=endlessnet-relay
+          - --encoding=UTF8
+          - --template=template0
+          - endlessnet_relay
+      become_user: postgres
+      when:
+        - relay_component == 'coordinator'
+        - relay_database.stdout | trim == ''
+
+    - name: Verify peer-authenticated Relay Coordinator database access
+      ansible.builtin.command:
+        argv:
+          - psql
+          - --no-psqlrc
+          - --dbname=postgresql:///endlessnet_relay?host=/var/run/postgresql&user=endlessnet-relay
+          - --command=SELECT 1
+      become_user: endlessnet-relay
+      changed_when: false
+      when: relay_component == 'coordinator'
+
+    - name: Create release directory
+      ansible.builtin.file:
+        path: "{{ relay_release_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create guarded rollout state directory
+      ansible.builtin.file:
+        path: "{{ relay_deploy_state_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Upload immutable release archive
+      ansible.builtin.copy:
+        src: "{{ relay_artifact }}"
+        dest: "/var/tmp/endlessnet-relay-{{ relay_version }}.tar.gz"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Extract release
+      ansible.builtin.unarchive:
+        src: "/var/tmp/endlessnet-relay-{{ relay_version }}.tar.gz"
+        dest: "{{ relay_release_dir }}"
+        remote_src: true
+        extra_opts: ["--strip-components=1"]
+
+    - name: Create protected component configuration directory
+      ansible.builtin.file:
+        path: /etc/endlessnet-relay
+        state: directory
+        owner: root
+        group: endlessnet-relay
+        mode: "0750"
+
+    - name: Install host-specific Relay configuration
+      ansible.builtin.copy:
+        content: |
+          ENDLESSNET_RELAY_ID={{ relay_id }}
+          ENDLESSNET_RELAY_BOOT_ID=
+          ENDLESSNET_RELAY_MESH_ADDR={{ wg_address }}:9444
+          ENDLESSNET_RELAY_MESH_LISTEN_ADDR={{ wg_address }}:9444
+        dest: /etc/endlessnet-relay/relay-instance.env
+        owner: root
+        group: root
+        mode: "0600"
+      when: relay_component == 'relay'
+
+    - name: Create stable public Relay TLS credential directory
+      ansible.builtin.file:
+        path: /etc/endlessnet-relay/public-tls
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      when: relay_component == 'relay'
+
+    - name: Record the host-specific public certificate name
+      ansible.builtin.copy:
+        content: "{{ relay_public_name }}\n"
+        dest: /etc/endlessnet-relay/public-tls/cert-name
+        owner: root
+        group: root
+        mode: "0600"
+      when: relay_component == 'relay'
+
+    - name: Link stable public Relay TLS credential sources
+      ansible.builtin.file:
+        src: "/etc/letsencrypt/live/{{ relay_public_name }}/{{ item }}"
+        dest: "/etc/endlessnet-relay/public-tls/{{ item }}"
+        state: link
+        owner: root
+        group: root
+        force: true
+      loop:
+        - fullchain.pem
+        - privkey.pem
+      when: relay_component == 'relay'
+
+    - name: Install versioned component configuration
+      ansible.builtin.copy:
+        src: "{{ relay_config_dir }}/{{ 'coordinator.env' if relay_component == 'coordinator' else 'relay.env' }}"
+        dest: "{{ relay_environment_file }}"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Install versioned endpoint snapshot
+      ansible.builtin.copy:
+        src: "{{ relay_config_dir }}/endpoints.json"
+        dest: /etc/endlessnet-relay/endpoints.json
+        owner: root
+        group: endlessnet-relay
+        mode: "0640"
+      when: relay_component == 'coordinator'
+
+    - name: Reject retired token and file-backed identity settings
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if grep -Eq '^[[:space:]]*ENDLESSNET_(SERVICE_AUTH_TOKEN|SERVICE_CA_FILE|SERVICE_CERT_FILE|SERVICE_KEY_FILE|COORDINATOR_SERVER_NAME|RELAY_COORDINATOR_SERVER_NAME)=' "{{ relay_environment_file }}"; then
+          exit 1
+        fi
+      args:
+        executable: /bin/bash
+      changed_when: false
+      no_log: true
+
+    - name: Detect the retired unversioned Relay unit
+      ansible.builtin.command:
+        argv:
+          - grep
+          - -Fq
+          - ExecStart=/opt/endlessnet/bin/endlessnet-relay
+          - /etc/systemd/system/endlessnet-relay.service
+      register: relay_legacy_unit
+      changed_when: false
+      failed_when: relay_legacy_unit.rc not in [0, 1, 2]
+
+    - name: Record whether the retired Relay is active
+      ansible.builtin.command:
+        argv: [systemctl, is-active, --quiet, endlessnet-relay.service]
+      register: relay_legacy_active
+      changed_when: false
+      failed_when: false
+      when: relay_legacy_unit.rc == 0
+
+    - name: Preserve the retired unit for guarded cutover rollback
+      ansible.builtin.copy:
+        src: /etc/systemd/system/endlessnet-relay.service
+        dest: "{{ relay_deploy_state_dir }}/endlessnet-relay.legacy.service"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0600"
+        force: false
+      when: relay_legacy_unit.rc == 0
+
+    - name: Inspect retired Relay drop-ins
+      ansible.builtin.stat:
+        path: /etc/systemd/system/endlessnet-relay.service.d
+      register: relay_legacy_dropins
+      when: relay_legacy_unit.rc == 0
+
+    - name: Preserve retired Relay drop-ins for guarded cutover rollback
+      ansible.builtin.command:
+        argv:
+          - cp
+          - -a
+          - /etc/systemd/system/endlessnet-relay.service.d
+          - "{{ relay_deploy_state_dir }}/endlessnet-relay.service.d"
+        creates: "{{ relay_deploy_state_dir }}/endlessnet-relay.service.d"
+      when:
+        - relay_legacy_unit.rc == 0
+        - relay_legacy_dropins.stat.isdir | default(false)
+
+    - name: Install systemd unit
+      ansible.builtin.copy:
+        src: "{{ relay_release_dir }}/{{ relay_unit }}"
+        dest: "/etc/systemd/system/{{ relay_unit }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Create direct Relay certificate renewal directory
+      ansible.builtin.file:
+        path: /usr/local/libexec/endlessnet-relay
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      when: relay_component == 'relay'
+
+    - name: Install direct Relay certificate renewal hook
+      ansible.builtin.copy:
+        src: "{{ relay_release_dir }}/{{ item.source }}"
+        dest: "/usr/local/libexec/endlessnet-relay/{{ item.destination }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - source: renew-relay-certificate.sh
+          destination: renew-certificate
+        - source: reload-relay-certificate.sh
+          destination: reload-certificate
+        - source: prepare-relay-certificate-renewal.sh
+          destination: prepare-certificate-renewal
+        - source: restore-relay-certificate-renewal.sh
+          destination: restore-certificate-renewal
+      when: relay_component == 'relay'
+
+    - name: Install direct Relay certificate renewal units
+      ansible.builtin.copy:
+        src: "{{ relay_release_dir }}/{{ item }}"
+        dest: "/etc/systemd/system/{{ item }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - endlessnet-relay-cert-renew.service
+        - endlessnet-relay-cert-renew.timer
+      when: relay_component == 'relay'
+
+    - name: Inspect current release
+      ansible.builtin.stat:
+        path: "{{ relay_root }}/current"
+        follow: false
+      register: relay_current
+
+    - name: Resolve current release
+      ansible.builtin.command:
+        argv:
+          - readlink
+          - -f
+          - "{{ relay_root }}/current"
+      register: relay_current_target
+      changed_when: false
+      when: relay_current.stat.islnk | default(false)
+
+    - name: Inspect previous release symlink
+      ansible.builtin.stat:
+        path: "{{ relay_root }}/previous"
+        follow: false
+      register: relay_previous
+
+    - name: Resolve previous release symlink
+      ansible.builtin.command:
+        argv:
+          - readlink
+          - -f
+          - "{{ relay_root }}/previous"
+      register: relay_previous_target
+      changed_when: false
+      when: relay_previous.stat.islnk | default(false)
+
+    - name: Require current to be an atomic release symlink
+      ansible.builtin.assert:
+        that:
+          - not (relay_current.stat.exists | default(false)) or (relay_current.stat.islnk | default(false))
+        fail_msg: "{{ relay_root }}/current exists but is not a symlink"
+
+    - name: Require previous to be an atomic release symlink
+      ansible.builtin.assert:
+        that:
+          - not (relay_previous.stat.exists | default(false)) or (relay_previous.stat.islnk | default(false))
+        fail_msg: "{{ relay_root }}/previous exists but is not a symlink"
+
+    - name: Validate current release path
+      ansible.builtin.assert:
+        that:
+          - relay_current_target.stdout is match('^' + relay_root + '/releases/v1\.[0-9]+\.[0-9]+$')
+      when: relay_current.stat.islnk | default(false)
+
+    - name: Validate previous release path
+      ansible.builtin.assert:
+        that:
+          - relay_previous_target.stdout is match('^' + relay_root + '/releases/v1\.[0-9]+\.[0-9]+$')
+      when: relay_previous.stat.islnk | default(false)
+
+    - name: Select guarded rollback release
+      ansible.builtin.set_fact:
+        relay_rollback_target: "{{ (relay_current_target.stdout | default('')) if (relay_current.stat.islnk | default(false)) and (relay_current_target.stdout | default('')) != relay_release_dir else (relay_previous_target.stdout | default('')) }}"
+
+    - name: Activate and verify release
+      block:
+        - name: Stop the retired combined Relay for coordinator cutover
+          ansible.builtin.systemd:
+            name: endlessnet-relay.service
+            state: stopped
+          when:
+            - relay_component == 'coordinator'
+            - relay_legacy_unit.rc == 0
+            - (relay_legacy_active.rc | default(1)) == 0
+
+        - name: Record the pending retired-unit rollback
+          ansible.builtin.copy:
+            content: "active-before-cutover\n"
+            dest: "{{ relay_deploy_state_dir }}/restore-legacy-relay"
+            owner: root
+            group: root
+            mode: "0600"
+            force: false
+          when:
+            - relay_component == 'coordinator'
+            - relay_legacy_unit.rc == 0
+            - (relay_legacy_active.rc | default(1)) == 0
+
+        - name: Remove retired Relay drop-ins for isolated units
+          ansible.builtin.file:
+            path: /etc/systemd/system/endlessnet-relay.service.d
+            state: absent
+          when:
+            - relay_component == 'coordinator'
+            - relay_legacy_unit.rc == 0
+
+        - name: Stage previous release symlink
+          ansible.builtin.file:
+            src: "{{ relay_current_target.stdout }}"
+            dest: "{{ relay_root }}/.previous.next"
+            state: link
+            force: true
+          when:
+            - relay_current.stat.islnk | default(false)
+            - relay_current_target.stdout != relay_release_dir
+
+        - name: Preserve previous release atomically
+          ansible.builtin.command:
+            argv:
+              - mv
+              - -Tf
+              - "{{ relay_root }}/.previous.next"
+              - "{{ relay_root }}/previous"
+          when:
+            - relay_current.stat.islnk | default(false)
+            - relay_current_target.stdout != relay_release_dir
+
+        - name: Stage current release symlink
+          ansible.builtin.file:
+            src: "{{ relay_release_dir }}"
+            dest: "{{ relay_root }}/.current.next"
+            state: link
+            force: true
+
+        - name: Switch current release atomically
+          ansible.builtin.command:
+            argv:
+              - mv
+              - -Tf
+              - "{{ relay_root }}/.current.next"
+              - "{{ relay_root }}/current"
+
+        - name: Restart deployed component
+          ansible.builtin.systemd:
+            name: "{{ relay_unit }}"
+            state: restarted
+            enabled: true
+            daemon_reload: true
+
+        - name: Enable direct Relay certificate renewal
+          ansible.builtin.systemd:
+            name: endlessnet-relay-cert-renew.timer
+            enabled: true
+            state: started
+            daemon_reload: true
+          when: relay_component == 'relay'
+
+        - name: Verify component service is active
+          ansible.builtin.command:
+            argv:
+              - systemctl
+              - is-active
+              - --quiet
+              - "{{ relay_unit }}"
+          changed_when: false
+
+        - name: Verify local Relay health
+          ansible.builtin.uri:
+            url: http://127.0.0.1:9190/healthz
+            status_code: 200
+          register: relay_health
+          retries: 20
+          delay: 1
+          until: relay_health.status == 200
+          when: relay_component == 'relay'
+
+        - name: Verify local Relay readiness
+          ansible.builtin.uri:
+            url: http://127.0.0.1:9190/readyz
+            status_code: 200
+          register: relay_readiness
+          retries: 20
+          delay: 1
+          until: relay_readiness.status == 200
+          when: relay_component == 'relay'
+
+        - name: Verify local Relay Coordinator readiness
+          ansible.builtin.uri:
+            url: http://127.0.0.1:9191/readyz
+            status_code: 200
+          register: relay_coordinator_readiness
+          retries: 20
+          delay: 1
+          until: relay_coordinator_readiness.status == 200
+          when: relay_component == 'coordinator'
+      rescue:
+        - name: Inspect pending retired-unit rollback
+          ansible.builtin.stat:
+            path: "{{ relay_deploy_state_dir }}/restore-legacy-relay"
+          register: relay_restore_legacy
+
+        - name: Restore the retired Relay unit definition
+          ansible.builtin.copy:
+            src: "{{ relay_deploy_state_dir }}/endlessnet-relay.legacy.service"
+            dest: /etc/systemd/system/endlessnet-relay.service
+            remote_src: true
+            owner: root
+            group: root
+            mode: "0644"
+          when: relay_restore_legacy.stat.isreg | default(false)
+
+        - name: Reload restored retired Relay unit
+          ansible.builtin.systemd:
+            daemon_reload: true
+          when: relay_restore_legacy.stat.isreg | default(false)
+
+        - name: Stop new Relay Coordinator before restoring combined Relay
+          ansible.builtin.systemd:
+            name: endlessnet-relay-coordinator.service
+            state: stopped
+          when:
+            - relay_restore_legacy.stat.isreg | default(false)
+            - relay_component == 'relay'
+
+        - name: Restore retired Relay drop-ins
+          ansible.builtin.command:
+            argv:
+              - cp
+              - -a
+              - "{{ relay_deploy_state_dir }}/endlessnet-relay.service.d"
+              - /etc/systemd/system/endlessnet-relay.service.d
+            creates: /etc/systemd/system/endlessnet-relay.service.d
+          when: relay_restore_legacy.stat.isreg | default(false)
+
+        - name: Reload restored retired Relay configuration
+          ansible.builtin.systemd:
+            daemon_reload: true
+          when: relay_restore_legacy.stat.isreg | default(false)
+
+        - name: Restart the retired Relay after failed cutover
+          ansible.builtin.systemd:
+            name: endlessnet-relay.service
+            state: started
+            enabled: true
+          when: relay_restore_legacy.stat.isreg | default(false)
+
+        - name: Stage rollback release symlink
+          ansible.builtin.file:
+            src: "{{ relay_rollback_target }}"
+            dest: "{{ relay_root }}/.current.rollback"
+            state: link
+            force: true
+          when: relay_rollback_target | length > 0
+
+        - name: Restore previous release atomically
+          ansible.builtin.command:
+            argv:
+              - mv
+              - -Tf
+              - "{{ relay_root }}/.current.rollback"
+              - "{{ relay_root }}/current"
+          when: relay_rollback_target | length > 0
+
+        - name: Remove failed current link without a previous release
+          ansible.builtin.file:
+            path: "{{ relay_root }}/current"
+            state: absent
+          when:
+            - relay_rollback_target | length == 0
+            - not (relay_restore_legacy.stat.isreg | default(false))
+
+        - name: Restart restored Relay Coordinator after Relay rollback
+          ansible.builtin.systemd:
+            name: endlessnet-relay-coordinator.service
+            state: restarted
+          when:
+            - relay_rollback_target | length > 0
+            - relay_component == 'relay'
+
+        - name: Restart restored component
+          ansible.builtin.systemd:
+            name: "{{ relay_unit }}"
+            state: restarted
+          when: relay_rollback_target | length > 0
+
+        - name: Verify restored component is active
+          ansible.builtin.command:
+            argv:
+              - systemctl
+              - is-active
+              - --quiet
+              - "{{ relay_unit }}"
+          changed_when: false
+          when: relay_rollback_target | length > 0
+
+        - name: Verify restored Relay health
+          ansible.builtin.uri:
+            url: http://127.0.0.1:9190/healthz
+            status_code: 200
+          register: relay_rollback_health
+          retries: 20
+          delay: 1
+          until: relay_rollback_health.status == 200
+          when:
+            - relay_rollback_target | length > 0
+            - relay_component == 'relay'
+
+        - name: Verify restored Relay Coordinator readiness
+          ansible.builtin.uri:
+            url: http://127.0.0.1:9191/readyz
+            status_code: 200
+          register: relay_coordinator_rollback_readiness
+          retries: 20
+          delay: 1
+          until: relay_coordinator_rollback_readiness.status == 200
+          when:
+            - relay_rollback_target | length > 0
+            - relay_component == 'coordinator'
+
+        - name: Stop component without a previous release
+          ansible.builtin.systemd:
+            name: "{{ relay_unit }}"
+            state: stopped
+          when:
+            - relay_rollback_target | length == 0
+            - not (relay_restore_legacy.stat.isreg | default(false))
+
+        - name: Stop rollout after verified rollback
+          ansible.builtin.fail:
+            msg: "Deployment of {{ relay_version }} failed; {{ relay_unit }} was rolled back"
+
+    - name: Remove uploaded release archive after successful activation
+      ansible.builtin.file:
+        path: "/var/tmp/endlessnet-relay-{{ relay_version }}.tar.gz"
+        state: absent

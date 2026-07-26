@@ -1,0 +1,14 @@
+# syntax=docker/dockerfile:1
+ARG GO_VERSION=1.26.5
+FROM golang:${GO_VERSION}-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -tags=e2e -trimpath -o /out/mock-coordinator ./e2e/cmd/mock-coordinator
+
+FROM gcr.io/distroless/static-debian13:nonroot
+COPY --from=build /out/mock-coordinator /usr/local/bin/mock-coordinator
+USER 65532:65532
+EXPOSE 9447
+ENTRYPOINT ["/usr/local/bin/mock-coordinator"]
