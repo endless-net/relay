@@ -1,0 +1,45 @@
+[Unit]
+Description=EndlessNet Relay Coordinator
+After=network-online.target wg-quick@wg0.service postgresql.service spire-agent.service
+Wants=network-online.target
+Requires=wg-quick@wg0.service
+Requisite=spire-agent.service
+
+[Service]
+Type=simple
+User=endlessnet-relay
+Group=endlessnet-relay
+SupplementaryGroups=spire-workload
+EnvironmentFile=/etc/endlessnet-relay/coordinator.env
+Environment=ENDLESSNET_SERVICE_TLS_PROVIDER=spiffe
+Environment=ENDLESSNET_SERVICE_TLS_WORKLOAD_API_ADDR=unix:///run/spire/sockets/agent.sock
+UnsetEnvironment=ENDLESSNET_SERVICE_AUTH_TOKEN ENDLESSNET_SERVICE_CA_FILE ENDLESSNET_SERVICE_CERT_FILE ENDLESSNET_SERVICE_KEY_FILE ENDLESSNET_COORDINATOR_SERVER_NAME
+ExecStart=/opt/endlessnet-relay/current/endlessnet-relay-coordinator
+Restart=on-failure
+RestartSec=2
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectProc=invisible
+ProcSubset=pid
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/endlessnet-relay
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,123 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  RELEASE_TAG: ${{ github.ref_name }}
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: read
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Validate version and source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          ./scripts/verify-production-provenance.sh --version "$RELEASE_TAG"
+          sh scripts/verify.sh
+      - name: Build release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for arch in amd64 arm64; do
+            out="dist/endlessnet-relay_${RELEASE_TAG}_linux_${arch}"
+            mkdir -p "$out"
+            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags "-s -w" -o "$out/endlessnet-relay" ./cmd/endlessnet-relay
+            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags "-s -w" -o "$out/endlessnet-relay-coordinator" ./cmd/endlessnet-relay-coordinator
+            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags "-s -w" -o "$out/endlessnet-relay-smoke" ./cmd/endlessnet-relay-smoke
+            cp deploy/endlessnet-relay.service deploy/endlessnet-relay-coordinator.service \
+              deploy/endlessnet-relay-cert-renew.service deploy/endlessnet-relay-cert-renew.timer \
+              deploy/renew-relay-certificate.sh deploy/reload-relay-certificate.sh \
+              deploy/prepare-relay-certificate-renewal.sh \
+              deploy/restore-relay-certificate-renewal.sh "$out/"
+            cp LICENSE NOTICE THIRD_PARTY_NOTICES "$out/"
+            tar -C dist -czf "${out}.tar.gz" "$(basename "$out")"
+            rm -rf "$out"
+          done
+          (cd dist && sha256sum -- *.tar.gz > checksums.txt)
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Derive immutable image tags
+        id: tags
+        shell: bash
+        run: |
+          version=${RELEASE_TAG#v}
+          major=${version%%.*}
+          remainder=${version#*.}
+          minor=${remainder%%.*}
+          {
+            echo "relay<<EOF"
+            echo "ghcr.io/${GITHUB_REPOSITORY}:${RELEASE_TAG}"
+            echo "ghcr.io/${GITHUB_REPOSITORY}:${major}.${minor}"
+            echo "ghcr.io/${GITHUB_REPOSITORY}:${major}"
+            echo "EOF"
+            echo "coordinator<<EOF"
+            echo "ghcr.io/${GITHUB_REPOSITORY}-coordinator:${RELEASE_TAG}"
+            echo "ghcr.io/${GITHUB_REPOSITORY}-coordinator:${major}.${minor}"
+            echo "ghcr.io/${GITHUB_REPOSITORY}-coordinator:${major}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: Dockerfile.relay
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.relay }}
+          build-args: |
+            VERSION=${{ env.RELEASE_TAG }}
+            COMMIT=${{ github.sha }}
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: Dockerfile.coordinator
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.coordinator }}
+      - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: dist/source-sbom.spdx.json
+      - uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
+        if: ${{ github.event.repository.visibility == 'public' }}
+        with:
+          subject-path: dist/*.tar.gz
+      - uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: dist/*
+          generate_release_notes: true
+
+  deploy-production:
+    if: ${{ vars.RELAY_AUTO_DEPLOY_AFTER_RELEASE == 'true' }}
+    needs: release
+    uses: ./.github/workflows/deploy-production.yml
+    with:
+      version: ${{ github.ref_name }}
+    secrets: inherit

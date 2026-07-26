@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "endpoints": [
+    {
+      "id": "relay-region-a-1",
+      "addr": "relay-region-a-1.endlessnet.ru:9443",
+      "protocol": "relay-v1-tls",
+      "region": "region-a",
+      "priority": 0
+    },
+    {
+      "id": "relay-region-b-1",
+      "addr": "relay-region-b-1.endlessnet.ru:9443",
+      "protocol": "relay-v1-tls",
+      "region": "region-b",
+      "priority": 0
+    }
+  ]
+}

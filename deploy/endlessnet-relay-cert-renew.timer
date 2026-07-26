@@ -1,0 +1,11 @@
+[Unit]
+Description=Check the public EndlessNet Relay certificate daily
+
+[Timer]
+OnCalendar=*-*-* 03:45:00
+Persistent=true
+RandomizedDelaySec=30m
+Unit=endlessnet-relay-cert-renew.service
+
+[Install]
+WantedBy=timers.target

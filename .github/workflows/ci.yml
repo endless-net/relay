@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3
+        with:
+          version: "31.0"
+          repo-token: ${{ github.token }}
+      - name: Verify generated protobuf
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.10
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
+          protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative api/relay/v1/relay.proto
+          git diff --exit-code
+      - name: Verify modules
+        run: go mod verify
+      - name: Verify dependency licenses
+        run: ./scripts/check-licenses.sh
+      - run: sh scripts/verify.sh
+      - name: Lint deployment scripts
+        run: docker run --rm -v "$PWD:/mnt" koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d scripts/*.sh
+      - name: Vulnerability scan
+        uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
+        with:
+          go-version-input: 1.26.5
+          go-package: ./...
+          cache: false
+      - name: Set up Docker Compose
+        uses: docker/setup-compose-action@4eb059ff7f16592f9c84d5ca339c53cb7c5064e2 # v2.3.0
+        with:
+          version: v5.3.1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - name: Build Relay container
+        run: docker buildx build --load --platform linux/amd64 --tag endlessnet-relay:ci --file Dockerfile.relay .
+      - name: Build Relay Coordinator container
+        run: docker buildx build --load --platform linux/amd64 --tag endlessnet-relay-coordinator:ci --file Dockerfile.coordinator .
+      - name: Verify multi-relay infrastructure
+        env:
+          E2E_RELAY_IMAGE: endlessnet-relay:ci
+          E2E_COORDINATOR_IMAGE: endlessnet-relay-coordinator:ci
+          E2E_ARTIFACT_DIR: ${{ runner.temp }}/endlessnet-relay-e2e
+        run: go test -tags=e2e -count=1 -timeout=5m ./e2e/...
+      - name: Upload multi-relay E2E diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: multi-relay-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/endlessnet-relay-e2e
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Scan Relay container
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: endlessnet-relay:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+      - name: Scan Relay Coordinator container
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: endlessnet-relay-coordinator:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+      - name: Verify generated state is clean
+        run: git diff --exit-code
