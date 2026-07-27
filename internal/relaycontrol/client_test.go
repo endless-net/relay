@@ -1,11 +1,16 @@
 package relaycontrol
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
 	relayv1 "github.com/unng-lab/endlessnet-relay/api/relay/v1"
+	"github.com/unng-lab/endlessnet-relay/internal/relay"
 	protocolv1 "github.com/unng-lab/endlessnet-relay/protocol/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 )
@@ -40,6 +45,22 @@ func TestAcceptCoordinatorStateValidatesEntireResponseContract(t *testing.T) {
 	}
 	if err := client.acceptCoordinatorState(nil, time.Now().Add(-time.Minute).UnixNano(), &relayv1.SigningTrustBundle{}); err == nil {
 		t.Fatal("expired instance lease was accepted")
+	}
+}
+
+func TestPeerAuthorizationClassifiesControlOutages(t *testing.T) {
+	for _, err := range []error{
+		context.DeadlineExceeded,
+		status.Error(codes.DeadlineExceeded, "deadline"),
+		status.Error(codes.Unavailable, "unavailable"),
+	} {
+		if mapped := mapPeerAuthorizationError(err); !errors.Is(mapped, relay.ErrControlUnavailable) {
+			t.Fatalf("error %v mapped to %v", err, mapped)
+		}
+	}
+	denied := status.Error(codes.PermissionDenied, "denied")
+	if mapped := mapPeerAuthorizationError(denied); errors.Is(mapped, relay.ErrControlUnavailable) {
+		t.Fatalf("permission denial mapped to control outage: %v", mapped)
 	}
 }
 

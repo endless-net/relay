@@ -115,6 +115,7 @@ type session struct {
 	writeMu                   sync.Mutex
 	closeOnce                 sync.Once
 	closed                    atomic.Bool
+	revoked                   atomic.Bool
 }
 
 func (s *Server) ListenAndServe(ctx context.Context) error {
@@ -308,7 +309,11 @@ func (s *Server) handleConn(ctx context.Context, conn net.Conn) {
 		route, err := s.authorizePeer(sess.ctx, sess.credential, sess.lease.Epoch, peerID)
 		if err != nil {
 			s.metrics().recordDrop("acl")
-			sess.writeError("relay peer is not allowed")
+			writeErr := sess.writeError("relay peer is not allowed")
+			if errors.Is(err, ErrControlUnavailable) || writeErr != nil {
+				sess.revoke()
+				return
+			}
 			continue
 		}
 		s.metrics().recordInboundFrame(len(frame.Payload))
@@ -488,11 +493,19 @@ func (s *session) writeReady() error {
 	return s.writer.Flush()
 }
 
-func (s *session) writeError(message string) {
+func (s *session) writeError(message string) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	_ = json.NewEncoder(s.writer).Encode(protocolv1.Error{Type: protocolv1.MessageError, ProtocolVersion: protocolv1.Version, Error: message})
-	_ = s.writer.Flush()
+	if err := s.conn.SetWriteDeadline(time.Now().Add(outboundWriteTimeout)); err != nil {
+		return err
+	}
+	defer func() {
+		_ = s.conn.SetWriteDeadline(time.Time{})
+	}()
+	if err := json.NewEncoder(s.writer).Encode(protocolv1.Error{Type: protocolv1.MessageError, ProtocolVersion: protocolv1.Version, Error: message}); err != nil {
+		return err
+	}
+	return s.writer.Flush()
 }
 
 func (s *session) startWriter() {
@@ -581,8 +594,7 @@ func (s *session) startLeaseRenewal(control ControlPlane, interval, timeout time
 					cancel()
 				}
 				if err != nil {
-					s.metrics.recordSessionRevoked()
-					s.close()
+					s.revoke()
 					return
 				}
 			}
@@ -633,6 +645,13 @@ func (s *session) close() {
 		}
 		_ = s.conn.Close()
 	})
+}
+
+func (s *session) revoke() {
+	if s.revoked.CompareAndSwap(false, true) {
+		s.metrics.recordSessionRevoked()
+	}
+	s.close()
 }
 
 func (s *session) writeFrame(frame protocolv1.ServerFrame) error {

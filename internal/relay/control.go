@@ -33,4 +33,7 @@ type MeshForwarder interface {
 	Forward(context.Context, PeerRoute, string, string, string, []byte) error
 }
 
-var ErrDestinationFenced = errors.New("relay mesh destination is fenced")
+var (
+	ErrControlUnavailable = errors.New("relay control plane is unavailable")
+	ErrDestinationFenced  = errors.New("relay mesh destination is fenced")
+)
