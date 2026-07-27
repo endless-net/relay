@@ -2,6 +2,8 @@ module github.com/unng-lab/endlessnet-relay
 
 go 1.26.5
 
+retract v1.1.2 // tag was republished with a different module checksum; use v1.1.3
+
 require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/spiffe/go-spiffe/v2 v2.8.1
