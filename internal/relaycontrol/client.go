@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -12,7 +13,9 @@ import (
 	"github.com/unng-lab/endlessnet-relay/internal/relay"
 	protocolv1 "github.com/unng-lab/endlessnet-relay/protocol/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -124,7 +127,7 @@ func (c *Client) ReleaseSession(ctx context.Context, lease relay.SessionLease) e
 func (c *Client) AuthorizePeer(ctx context.Context, credential protocolv1.Credential, sourceEpoch int64, peerID string) (relay.PeerRoute, error) {
 	response, err := c.Control.AuthorizePeer(ctx, &relayv1.AuthorizePeerRequest{RelayId: c.RelayID, BootId: c.BootID, Credential: relayv1.CredentialFromProtocol(credential), PeerId: peerID, SourceEpoch: sourceEpoch})
 	if err != nil {
-		return relay.PeerRoute{}, err
+		return relay.PeerRoute{}, mapPeerAuthorizationError(err)
 	}
 	if err := rejectResponse(response); err != nil {
 		return relay.PeerRoute{}, err
@@ -133,6 +136,18 @@ func (c *Client) AuthorizePeer(ctx context.Context, credential protocolv1.Creden
 		return relay.PeerRoute{}, errors.New("relay Coordinator returned an invalid destination route")
 	}
 	return relay.PeerRoute{RelayID: response.GetDestinationRelayId(), BootID: response.GetDestinationBootId(), Epoch: response.GetDestinationEpoch()}, nil
+}
+
+func mapPeerAuthorizationError(err error) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("%w: %v", relay.ErrControlUnavailable, err)
+	}
+	switch status.Code(err) {
+	case codes.Unavailable, codes.DeadlineExceeded:
+		return fmt.Errorf("%w: %v", relay.ErrControlUnavailable, err)
+	default:
+		return err
+	}
 }
 
 func (c *Client) acceptCoordinatorState(peers []*relayv1.RelayInstance, expiresUnixNano int64, rawBundle *relayv1.SigningTrustBundle) error {

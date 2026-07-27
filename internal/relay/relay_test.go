@@ -13,9 +13,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/big"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,11 +25,12 @@ import (
 )
 
 type testControl struct {
-	mu          sync.Mutex
-	nextEpoch   int64
-	sessions    map[string]SessionLease
-	acquireHook func(context.Context, protocolv1.Credential) (SessionLease, error)
-	renewHook   func(context.Context, SessionLease) error
+	mu            sync.Mutex
+	nextEpoch     int64
+	sessions      map[string]SessionLease
+	acquireHook   func(context.Context, protocolv1.Credential) (SessionLease, error)
+	renewHook     func(context.Context, SessionLease) error
+	authorizeHook func(context.Context, protocolv1.Credential, int64, string) (PeerRoute, error)
 }
 
 func (c *testControl) AcquireSession(ctx context.Context, credential protocolv1.Credential) (SessionLease, error) {
@@ -54,7 +57,10 @@ func (c *testControl) RenewSession(ctx context.Context, lease SessionLease) erro
 
 func (c *testControl) ReleaseSession(context.Context, SessionLease) error { return nil }
 
-func (c *testControl) AuthorizePeer(_ context.Context, _ protocolv1.Credential, _ int64, peerID string) (PeerRoute, error) {
+func (c *testControl) AuthorizePeer(ctx context.Context, credential protocolv1.Credential, sourceEpoch int64, peerID string) (PeerRoute, error) {
+	if c.authorizeHook != nil {
+		return c.authorizeHook(ctx, credential, sourceEpoch, peerID)
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	lease, ok := c.sessions[peerID]
@@ -214,6 +220,77 @@ func TestSessionRenewalFailureClosesSession(t *testing.T) {
 	}
 	if !sess.closed.Load() {
 		t.Fatal("revoked session remained open")
+	}
+}
+
+func TestControlUnavailableDuringPeerAuthorizationClosesSession(t *testing.T) {
+	server, roots, privateKey, control, cancel, done := startRelayForTest(t, 50*time.Millisecond)
+	defer stopRelayForTest(t, cancel, done)
+	peerB, _ := authenticateRelayForTest(t, server.Addr, roots, privateKey, "network", "node-b", 0)
+	defer peerB.Close()
+	peerA, readerA := authenticateRelayForTest(t, server.Addr, roots, privateKey, "network", "node-a", 0)
+	defer peerA.Close()
+
+	control.authorizeHook = func(context.Context, protocolv1.Credential, int64, string) (PeerRoute, error) {
+		return PeerRoute{}, fmt.Errorf("%w: test outage", ErrControlUnavailable)
+	}
+	if err := json.NewEncoder(peerA).Encode(protocolv1.ClientFrame{Type: protocolv1.MessageClientFrame, ProtocolVersion: protocolv1.Version, PeerID: "node-b", Payload: []byte("fail-closed")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := peerA.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	decoderA := json.NewDecoder(readerA)
+	var relayError protocolv1.Error
+	if err := decoderA.Decode(&relayError); err != nil {
+		t.Fatal(err)
+	}
+	if relayError.Type != protocolv1.MessageError || relayError.Error == "" {
+		t.Fatalf("relay error = %#v", relayError)
+	}
+	var trailing json.RawMessage
+	if err := decoderA.Decode(&trailing); err == nil {
+		t.Fatal("session remained open after relay control outage")
+	}
+}
+
+func TestPeerDenialDoesNotCloseSession(t *testing.T) {
+	server, roots, privateKey, control, cancel, done := startRelayForTest(t, 500*time.Millisecond)
+	defer stopRelayForTest(t, cancel, done)
+	peerB, readerB := authenticateRelayForTest(t, server.Addr, roots, privateKey, "network", "node-b", 0)
+	defer peerB.Close()
+	peerA, readerA := authenticateRelayForTest(t, server.Addr, roots, privateKey, "network", "node-a", 0)
+	defer peerA.Close()
+
+	control.mu.Lock()
+	allowed := control.sessions["node-b"]
+	control.mu.Unlock()
+	var denied atomic.Bool
+	denied.Store(true)
+	control.authorizeHook = func(context.Context, protocolv1.Credential, int64, string) (PeerRoute, error) {
+		if denied.Load() {
+			return PeerRoute{}, errors.New("peer denied")
+		}
+		return PeerRoute{RelayID: allowed.RelayID, BootID: allowed.BootID, Epoch: allowed.Epoch}, nil
+	}
+	if err := json.NewEncoder(peerA).Encode(protocolv1.ClientFrame{Type: protocolv1.MessageClientFrame, ProtocolVersion: protocolv1.Version, PeerID: "node-b", Payload: []byte("denied")}); err != nil {
+		t.Fatal(err)
+	}
+	var relayError protocolv1.Error
+	if err := json.NewDecoder(readerA).Decode(&relayError); err != nil {
+		t.Fatal(err)
+	}
+	denied.Store(false)
+	payload := []byte("allowed-after-denial")
+	if err := json.NewEncoder(peerA).Encode(protocolv1.ClientFrame{Type: protocolv1.MessageClientFrame, ProtocolVersion: protocolv1.Version, PeerID: "node-b", Payload: payload}); err != nil {
+		t.Fatal(err)
+	}
+	var frame protocolv1.ServerFrame
+	if err := json.NewDecoder(readerB).Decode(&frame); err != nil {
+		t.Fatal(err)
+	}
+	if frame.FromNodeID != "node-a" || string(frame.Payload) != string(payload) {
+		t.Fatalf("forwarded frame = %#v", frame)
 	}
 }
 
