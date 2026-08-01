@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	relayv1 "github.com/unng-lab/endlessnet-relay/api/relay/v1"
-	"github.com/unng-lab/endlessnet-relay/internal/relay"
-	protocolv1 "github.com/unng-lab/endlessnet-relay/protocol/v1"
+	relayv1 "github.com/endless-net/relay/api/relay/v1"
+	"github.com/endless-net/relay/internal/relay"
+	protocolv1 "github.com/endless-net/relay/protocol/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"

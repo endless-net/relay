@@ -1,4 +1,4 @@
-module github.com/unng-lab/endlessnet-relay
+module github.com/endless-net/relay
 
 go 1.26.5
 

@@ -26,6 +26,12 @@ peer-authenticated PostgreSQL database.
 
 ## Build and test
 
+Go consumers use the canonical module path:
+
+```sh
+go get github.com/endless-net/relay@v1.1.4
+```
+
 ```sh
 go test -race ./...
 go build ./cmd/...

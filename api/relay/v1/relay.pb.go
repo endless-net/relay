@@ -1459,7 +1459,7 @@ const file_api_relay_v1_relay_proto_rawDesc = "" +
 	"\x0eReleaseSession\x12*.endlessnet.relay.v1.ReleaseSessionRequest\x1a+.endlessnet.relay.v1.ReleaseSessionResponse\x12f\n" +
 	"\rAuthorizePeer\x12).endlessnet.relay.v1.AuthorizePeerRequest\x1a*.endlessnet.relay.v1.AuthorizePeerResponse2^\n" +
 	"\tRelayMesh\x12Q\n" +
-	"\aConnect\x12 .endlessnet.relay.v1.MeshMessage\x1a .endlessnet.relay.v1.MeshMessage(\x010\x01B;Z9github.com/unng-lab/endlessnet-relay/api/relay/v1;relayv1b\x06proto3"
+	"\aConnect\x12 .endlessnet.relay.v1.MeshMessage\x1a .endlessnet.relay.v1.MeshMessage(\x010\x01B3Z1github.com/endless-net/relay/api/relay/v1;relayv1b\x06proto3"
 
 var (
 	file_api_relay_v1_relay_proto_rawDescOnce sync.Once

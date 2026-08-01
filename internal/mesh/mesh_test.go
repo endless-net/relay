@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	relayv1 "github.com/unng-lab/endlessnet-relay/api/relay/v1"
-	"github.com/unng-lab/endlessnet-relay/internal/relay"
+	relayv1 "github.com/endless-net/relay/api/relay/v1"
+	"github.com/endless-net/relay/internal/relay"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )

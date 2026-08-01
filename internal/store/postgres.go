@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
+	protocolv1 "github.com/endless-net/relay/protocol/v1"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	protocolv1 "github.com/unng-lab/endlessnet-relay/protocol/v1"
 )
 
 //go:embed migrations/*.sql

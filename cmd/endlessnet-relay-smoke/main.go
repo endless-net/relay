@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/unng-lab/endlessnet-relay/internal/tlsconfig"
+	"github.com/endless-net/relay/internal/tlsconfig"
 )
 
 func main() {

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package endlessnet.relay.v1;
 
-option go_package = "github.com/unng-lab/endlessnet-relay/api/relay/v1;relayv1";
+option go_package = "github.com/endless-net/relay/api/relay/v1;relayv1";
 
 service RelayControl {
   rpc RegisterInstance(RegisterInstanceRequest) returns (RegisterInstanceResponse);
