@@ -13,7 +13,7 @@
     - name: Validate required deployment inputs
       ansible.builtin.assert:
         that:
-          - relay_version is match('^v1\.[0-9]+\.[0-9]+$')
+          - relay_version is match('^[0-9a-f]{40}$')
           - relay_artifact | length > 0
           - relay_config_dir | length > 0
           - relay_component in ['coordinator', 'relay']
@@ -453,13 +453,13 @@
     - name: Validate current release path
       ansible.builtin.assert:
         that:
-          - relay_current_target.stdout is match('^' + relay_root + '/releases/v1\.[0-9]+\.[0-9]+$')
+          - relay_current_target.stdout is match('^' + relay_root + '/releases/(v1\.[0-9]+\.[0-9]+|[0-9a-f]{40})$')
       when: relay_current.stat.islnk | default(false)
 
     - name: Validate previous release path
       ansible.builtin.assert:
         that:
-          - relay_previous_target.stdout is match('^' + relay_root + '/releases/v1\.[0-9]+\.[0-9]+$')
+          - relay_previous_target.stdout is match('^' + relay_root + '/releases/(v1\.[0-9]+\.[0-9]+|[0-9a-f]{40})$')
       when: relay_previous.stat.islnk | default(false)
 
     - name: Select guarded rollback release

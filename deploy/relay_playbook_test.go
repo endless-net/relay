@@ -43,3 +43,20 @@ func TestRelayInstanceConfigUsesHostWireGuardAddress(t *testing.T) {
 		}
 	}
 }
+
+func TestRelayDeploymentUsesCommitSHAAndCanRollBackSemver(t *testing.T) {
+	playbook, err := os.ReadFile("relay.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	contents := string(playbook)
+	for _, contract := range []string{
+		"relay_version is match('^[0-9a-f]{40}$')",
+		"/releases/(v1\\.[0-9]+\\.[0-9]+|[0-9a-f]{40})$",
+	} {
+		if !strings.Contains(contents, contract) {
+			t.Errorf("relay.yml does not contain SHA deployment contract %q", contract)
+		}
+	}
+}
