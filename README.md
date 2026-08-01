@@ -88,3 +88,12 @@ infrastructure recovery remain outside this repository.
 Release archives contain binaries, service units, renewal helpers, license
 notices, and checksums. They never contain production environment files,
 inventory, private keys, or endpoint topology.
+
+For a dependency matrix and a manual systemd installation procedure for both
+the Relay Coordinator and Relay nodes, see
+[systemd deployment](docs/systemd-deployment.md). Local multi-architecture
+archives can be built with:
+
+```sh
+bash scripts/build-release.sh v1.1.3 dist
+```

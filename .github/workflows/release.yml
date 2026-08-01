@@ -18,6 +18,8 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    outputs:
+      commit_sha: ${{ steps.source.outputs.commit_sha }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -28,34 +30,19 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Validate version and source
+        id: source
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
+          set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           ./scripts/verify-production-provenance.sh --version "$RELEASE_TAG"
           sh scripts/verify.sh
+          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Build release artifacts
         shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          for arch in amd64 arm64; do
-            out="dist/endlessnet-relay_${RELEASE_TAG}_linux_${arch}"
-            mkdir -p "$out"
-            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags "-s -w" -o "$out/endlessnet-relay" ./cmd/endlessnet-relay
-            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags "-s -w" -o "$out/endlessnet-relay-coordinator" ./cmd/endlessnet-relay-coordinator
-            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags "-s -w" -o "$out/endlessnet-relay-smoke" ./cmd/endlessnet-relay-smoke
-            cp deploy/endlessnet-relay.service deploy/endlessnet-relay-coordinator.service \
-              deploy/endlessnet-relay-cert-renew.service deploy/endlessnet-relay-cert-renew.timer \
-              deploy/renew-relay-certificate.sh deploy/reload-relay-certificate.sh \
-              deploy/prepare-relay-certificate-renewal.sh \
-              deploy/restore-relay-certificate-renewal.sh "$out/"
-            cp LICENSE NOTICE THIRD_PARTY_NOTICES "$out/"
-            tar -C dist -czf "${out}.tar.gz" "$(basename "$out")"
-            rm -rf "$out"
-          done
-          (cd dist && sha256sum -- *.tar.gz > checksums.txt)
+        run: bash scripts/build-release.sh "$RELEASE_TAG" dist
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
@@ -125,5 +112,5 @@ jobs:
     needs: release
     uses: ./.github/workflows/deploy-production.yml
     with:
-      version: ${{ github.ref_name }}
+      revision: ${{ needs.release.outputs.commit_sha }}
     secrets: inherit

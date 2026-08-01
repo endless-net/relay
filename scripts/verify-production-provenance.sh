@@ -2,23 +2,33 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 --version v1.X.Y [--workflow-ref refs/heads/main]" >&2
+  echo "usage: $0 (--version v1.X.Y | --revision COMMIT_SHA) [--workflow-ref refs/heads/main]" >&2
 }
 
 version=
+revision=
 workflow_ref=
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --version) version=${2:-}; shift 2 ;;
+    --revision) revision=${2:-}; shift 2 ;;
     --workflow-ref) workflow_ref=${2:-}; shift 2 ;;
     *) usage; exit 2 ;;
   esac
 done
 
-[[ "$version" =~ ^v1\.[0-9]+\.[0-9]+$ ]] || {
+if [[ -n "$version" && -n "$revision" ]] || [[ -z "$version" && -z "$revision" ]]; then
+  usage
+  exit 2
+fi
+if [[ -n "$version" && ! "$version" =~ ^v1\.[0-9]+\.[0-9]+$ ]]; then
   echo "version must be an exact v1-prefixed semantic version" >&2
   exit 2
-}
+fi
+if [[ -n "$revision" && ! "$revision" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "revision must be a full lowercase commit SHA" >&2
+  exit 2
+fi
 if [[ -n "$workflow_ref" && "$workflow_ref" != refs/heads/main ]]; then
   echo "manual production deployment must run from refs/heads/main" >&2
   exit 1
@@ -27,11 +37,25 @@ fi
 repository=${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}
 gh_bin=${GH_BIN:-gh}
 
-git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
-git fetch --force origin "refs/tags/${version}:refs/tags/${version}"
-release_commit=$(git rev-parse "${version}^{commit}")
+if [[ -n "$version" ]]; then
+  git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+  git fetch --force origin "refs/tags/${version}:refs/tags/${version}"
+  release_commit=$(git rev-parse "${version}^{commit}")
+  source_label=$version
+else
+  git show-ref --verify --quiet refs/remotes/origin/main || {
+    echo "origin/main is missing from the full checkout" >&2
+    exit 1
+  }
+  release_commit=$(git rev-parse "${revision}^{commit}")
+  [[ "$release_commit" == "$revision" ]] || {
+    echo "revision does not resolve to the requested commit" >&2
+    exit 1
+  }
+  source_label=$revision
+fi
 if ! git merge-base --is-ancestor "$release_commit" refs/remotes/origin/main; then
-  echo "$version does not reference a commit in origin/main" >&2
+  echo "$source_label does not reference a commit in origin/main" >&2
   exit 1
 fi
 
@@ -53,8 +77,8 @@ if (( merged_pr_count == 0 )); then
     echo "verified $version as the single-commit public baseline"
     exit 0
   fi
-  echo "$version commit $release_commit was not delivered through a merged PR into main" >&2
+  echo "$source_label commit $release_commit was not delivered through a merged PR into main" >&2
   exit 1
 fi
 
-echo "verified $version commit $release_commit from a merged PR into main"
+echo "verified $source_label commit $release_commit from a merged PR into main"
