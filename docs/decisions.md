@@ -12,7 +12,7 @@
 
 **Контекст.** Relay имеет отдельный профиль безопасности, публичные listeners,
 multi-host deployment и собственный темп выпуска. Его исходники первоначально
-были частью `unng-lab/endlessnet`.
+были частью исходного монорепозитория EndlessNet.
 
 **Решение.** Data plane, Relay Coordinator, mesh, схемы, deployment и release
 artifacts живут в `endlessnet-relay`. Происхождение извлечённых исходников
