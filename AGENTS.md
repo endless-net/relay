@@ -8,6 +8,12 @@
 - Format every commit message according to Conventional Commits, for example
   `feat: ...`, `fix: ...`, `docs: ...`, or `chore: ...`.
 
+## Repository boundary
+
+- Work only within this repository.
+- Before reading from or writing to any path outside this repository, request
+  and receive the user's explicit permission.
+
 - Run `git status --short` before reading or editing.
 - Never inspect secrets, private keys, `.env`, or production credentials.
 - Relay wire and gRPC contracts are versioned; reject unknown versions and fields.
