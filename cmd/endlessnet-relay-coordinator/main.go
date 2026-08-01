@@ -14,12 +14,12 @@ import (
 	"syscall"
 	"time"
 
-	relayv1 "github.com/unng-lab/endlessnet-relay/api/relay/v1"
-	"github.com/unng-lab/endlessnet-relay/internal/authz"
-	"github.com/unng-lab/endlessnet-relay/internal/relaycoordinator"
-	"github.com/unng-lab/endlessnet-relay/internal/store"
-	"github.com/unng-lab/endlessnet-relay/internal/tlsconfig"
-	protocolv1 "github.com/unng-lab/endlessnet-relay/protocol/v1"
+	relayv1 "github.com/endless-net/relay/api/relay/v1"
+	"github.com/endless-net/relay/internal/authz"
+	"github.com/endless-net/relay/internal/relaycoordinator"
+	"github.com/endless-net/relay/internal/store"
+	"github.com/endless-net/relay/internal/tlsconfig"
+	protocolv1 "github.com/endless-net/relay/protocol/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )

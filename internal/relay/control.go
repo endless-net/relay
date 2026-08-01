@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	protocolv1 "github.com/unng-lab/endlessnet-relay/protocol/v1"
+	protocolv1 "github.com/endless-net/relay/protocol/v1"
 )
 
 type SessionLease struct {
