@@ -1,5 +1,12 @@
 # Agents
 
+## Git workflow
+
+- Work on a short-lived branch and submit every change through a pull request
+  targeting `main`. Do not push changes directly to `main`.
+- Format every commit message according to Conventional Commits, for example
+  `feat: ...`, `fix: ...`, `docs: ...`, or `chore: ...`.
+
 - Run `git status --short` before reading or editing.
 - Never inspect secrets, private keys, `.env`, or production credentials.
 - Relay wire and gRPC contracts are versioned; reject unknown versions and fields.
@@ -8,4 +15,4 @@
 - Run `gofmt -w .`, `go vet ./...`, `go test -race ./...`, and `go build ./cmd/...` before handoff.
 - GitHub Actions runner-unit infrastructure (installation, registration, systemd policy, inventory, recovery, and rollout) is owned by `unng-lab/endlessnet-observability`; keep only the minimal `runs-on` selectors in this repository.
 - SPIRE Server/Agent operations and workload-entry reconciliation are owned by `unng-lab/endlessnet-observability` through guarded direct SSH. Keep Relay SPIFFE IDs and systemd workload requirements here, but never operate or inspect SPIRE from Actions or deployment playbooks.
-- Production changes reach `main` through a pull request and use the guarded release/deploy workflows.
+- Production changes use the guarded release/deploy workflows.
