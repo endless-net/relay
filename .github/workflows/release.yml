@@ -113,3 +113,4 @@ jobs:
     uses: ./.github/workflows/deploy-production.yml
     with:
       revision: ${{ needs.release.outputs.commit_sha }}
+    secrets: inherit

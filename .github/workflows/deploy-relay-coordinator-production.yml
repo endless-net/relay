@@ -18,3 +18,4 @@ jobs:
     with:
       revision: ${{ inputs.revision }}
       target: coordinator
+    secrets: inherit

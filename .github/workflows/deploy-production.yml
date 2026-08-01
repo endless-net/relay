@@ -146,3 +146,4 @@ jobs:
       commit_sha: ${{ inputs.revision }}
       artifact_name: endlessnet-relay-${{ inputs.revision }}
       target: ${{ inputs.target }}
+    secrets: inherit
