@@ -556,8 +556,18 @@ func assertEventuallyRejected(t *testing.T, from *relayClient, peerID string, pa
 func assertRejected(t *testing.T, from *relayClient, peerID string, payload []byte, timeout time.Duration) {
 	t.Helper()
 	drainEvents(from)
+	select {
+	case <-from.closed:
+		return
+	default:
+	}
 	if err := from.send(peerID, payload); err != nil {
-		t.Fatal(err)
+		select {
+		case <-from.closed:
+			return
+		default:
+			t.Fatal(err)
+		}
 	}
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
@@ -570,6 +580,8 @@ func assertRejected(t *testing.T, from *relayClient, peerID string, payload []by
 			if event.closed != nil {
 				return
 			}
+		case <-from.closed:
+			return
 		case <-timer.C:
 			t.Fatalf("source %s did not reject peer %s within %s", from.nodeID, peerID, timeout)
 		}
