@@ -60,3 +60,23 @@ func TestRelayDeploymentUsesCommitSHAAndCanRollBackSemver(t *testing.T) {
 		}
 	}
 }
+
+func TestRelayDeploymentDoesNotRetainRetiredUnitCompatibility(t *testing.T) {
+	playbook, err := os.ReadFile("relay.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	contents := string(playbook)
+	for _, retiredContract := range []string{
+		"ExecStart=/opt/endlessnet/bin/endlessnet-relay",
+		"relay_legacy_",
+		"restore-legacy-relay",
+		"endlessnet-relay.legacy.service",
+		"endlessnet-relay.service.d",
+	} {
+		if strings.Contains(contents, retiredContract) {
+			t.Errorf("relay.yml retains retired unit compatibility %q", retiredContract)
+		}
+	}
+}

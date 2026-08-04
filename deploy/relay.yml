@@ -6,7 +6,6 @@
   vars:
     relay_root: /opt/endlessnet-relay
     relay_release_dir: "{{ relay_root }}/releases/{{ relay_version }}"
-    relay_deploy_state_dir: "{{ relay_root }}/deploy/{{ relay_version }}"
     relay_unit: "{{ 'endlessnet-relay-coordinator.service' if relay_component == 'coordinator' else 'endlessnet-relay.service' }}"
     relay_environment_file: "/etc/endlessnet-relay/{{ 'coordinator.env' if relay_component == 'coordinator' else 'relay.env' }}"
   tasks:
@@ -205,14 +204,6 @@
         group: root
         mode: "0755"
 
-    - name: Create guarded rollout state directory
-      ansible.builtin.file:
-        path: "{{ relay_deploy_state_dir }}"
-        state: directory
-        owner: root
-        group: root
-        mode: "0700"
-
     - name: Upload immutable release archive
       ansible.builtin.copy:
         src: "{{ relay_artifact }}"
@@ -307,54 +298,6 @@
         executable: /bin/bash
       changed_when: false
       no_log: true
-
-    - name: Detect the retired unversioned Relay unit
-      ansible.builtin.command:
-        argv:
-          - grep
-          - -Fq
-          - ExecStart=/opt/endlessnet/bin/endlessnet-relay
-          - /etc/systemd/system/endlessnet-relay.service
-      register: relay_legacy_unit
-      changed_when: false
-      failed_when: relay_legacy_unit.rc not in [0, 1, 2]
-
-    - name: Record whether the retired Relay is active
-      ansible.builtin.command:
-        argv: [systemctl, is-active, --quiet, endlessnet-relay.service]
-      register: relay_legacy_active
-      changed_when: false
-      failed_when: false
-      when: relay_legacy_unit.rc == 0
-
-    - name: Preserve the retired unit for guarded cutover rollback
-      ansible.builtin.copy:
-        src: /etc/systemd/system/endlessnet-relay.service
-        dest: "{{ relay_deploy_state_dir }}/endlessnet-relay.legacy.service"
-        remote_src: true
-        owner: root
-        group: root
-        mode: "0600"
-        force: false
-      when: relay_legacy_unit.rc == 0
-
-    - name: Inspect retired Relay drop-ins
-      ansible.builtin.stat:
-        path: /etc/systemd/system/endlessnet-relay.service.d
-      register: relay_legacy_dropins
-      when: relay_legacy_unit.rc == 0
-
-    - name: Preserve retired Relay drop-ins for guarded cutover rollback
-      ansible.builtin.command:
-        argv:
-          - cp
-          - -a
-          - /etc/systemd/system/endlessnet-relay.service.d
-          - "{{ relay_deploy_state_dir }}/endlessnet-relay.service.d"
-        creates: "{{ relay_deploy_state_dir }}/endlessnet-relay.service.d"
-      when:
-        - relay_legacy_unit.rc == 0
-        - relay_legacy_dropins.stat.isdir | default(false)
 
     - name: Install systemd unit
       ansible.builtin.copy:
@@ -468,36 +411,6 @@
 
     - name: Activate and verify release
       block:
-        - name: Stop the retired combined Relay for coordinator cutover
-          ansible.builtin.systemd:
-            name: endlessnet-relay.service
-            state: stopped
-          when:
-            - relay_component == 'coordinator'
-            - relay_legacy_unit.rc == 0
-            - (relay_legacy_active.rc | default(1)) == 0
-
-        - name: Record the pending retired-unit rollback
-          ansible.builtin.copy:
-            content: "active-before-cutover\n"
-            dest: "{{ relay_deploy_state_dir }}/restore-legacy-relay"
-            owner: root
-            group: root
-            mode: "0600"
-            force: false
-          when:
-            - relay_component == 'coordinator'
-            - relay_legacy_unit.rc == 0
-            - (relay_legacy_active.rc | default(1)) == 0
-
-        - name: Remove retired Relay drop-ins for isolated units
-          ansible.builtin.file:
-            path: /etc/systemd/system/endlessnet-relay.service.d
-            state: absent
-          when:
-            - relay_component == 'coordinator'
-            - relay_legacy_unit.rc == 0
-
         - name: Stage previous release symlink
           ansible.builtin.file:
             src: "{{ relay_current_target.stdout }}"
@@ -588,56 +501,6 @@
           until: relay_coordinator_readiness.status == 200
           when: relay_component == 'coordinator'
       rescue:
-        - name: Inspect pending retired-unit rollback
-          ansible.builtin.stat:
-            path: "{{ relay_deploy_state_dir }}/restore-legacy-relay"
-          register: relay_restore_legacy
-
-        - name: Restore the retired Relay unit definition
-          ansible.builtin.copy:
-            src: "{{ relay_deploy_state_dir }}/endlessnet-relay.legacy.service"
-            dest: /etc/systemd/system/endlessnet-relay.service
-            remote_src: true
-            owner: root
-            group: root
-            mode: "0644"
-          when: relay_restore_legacy.stat.isreg | default(false)
-
-        - name: Reload restored retired Relay unit
-          ansible.builtin.systemd:
-            daemon_reload: true
-          when: relay_restore_legacy.stat.isreg | default(false)
-
-        - name: Stop new Relay Coordinator before restoring combined Relay
-          ansible.builtin.systemd:
-            name: endlessnet-relay-coordinator.service
-            state: stopped
-          when:
-            - relay_restore_legacy.stat.isreg | default(false)
-            - relay_component == 'relay'
-
-        - name: Restore retired Relay drop-ins
-          ansible.builtin.command:
-            argv:
-              - cp
-              - -a
-              - "{{ relay_deploy_state_dir }}/endlessnet-relay.service.d"
-              - /etc/systemd/system/endlessnet-relay.service.d
-            creates: /etc/systemd/system/endlessnet-relay.service.d
-          when: relay_restore_legacy.stat.isreg | default(false)
-
-        - name: Reload restored retired Relay configuration
-          ansible.builtin.systemd:
-            daemon_reload: true
-          when: relay_restore_legacy.stat.isreg | default(false)
-
-        - name: Restart the retired Relay after failed cutover
-          ansible.builtin.systemd:
-            name: endlessnet-relay.service
-            state: started
-            enabled: true
-          when: relay_restore_legacy.stat.isreg | default(false)
-
         - name: Stage rollback release symlink
           ansible.builtin.file:
             src: "{{ relay_rollback_target }}"
@@ -661,7 +524,6 @@
             state: absent
           when:
             - relay_rollback_target | length == 0
-            - not (relay_restore_legacy.stat.isreg | default(false))
 
         - name: Restart restored Relay Coordinator after Relay rollback
           ansible.builtin.systemd:
@@ -717,7 +579,6 @@
             state: stopped
           when:
             - relay_rollback_target | length == 0
-            - not (relay_restore_legacy.stat.isreg | default(false))
 
         - name: Stop rollout after verified rollback
           ansible.builtin.fail:
