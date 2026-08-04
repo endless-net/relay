@@ -2,9 +2,10 @@
 
 ## Git workflow
 
-- Work directly on `main`. Do not create feature branches or pull requests.
-- After completing and validating a change, commit only its intended files and
-  push the commit directly to `main` immediately.
+- Changes targeting protected `main` must be submitted through a pull request;
+  do not push directly to `main`.
+- After completing and validating a change, commit only its intended files,
+  push the current branch, and open a pull request targeting `main`.
 - Format every commit message according to Conventional Commits, for example
   `feat: ...`, `fix: ...`, `docs: ...`, or `chore: ...`.
 
