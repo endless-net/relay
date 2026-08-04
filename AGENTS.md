@@ -13,6 +13,7 @@
 - Work only within this repository.
 - Before reading from or writing to any path outside this repository, request
   and receive the user's explicit permission.
+- Do not preserve legacy behavior, deprecated interfaces, or backward compatibility.
 
 - Run `git status --short` before reading or editing.
 - Never inspect secrets, private keys, `.env`, or production credentials.
