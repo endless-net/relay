@@ -106,11 +106,3 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           files: dist/*
           generate_release_notes: true
-
-  deploy-production:
-    if: ${{ vars.RELAY_AUTO_DEPLOY_AFTER_RELEASE == 'true' }}
-    needs: release
-    uses: ./.github/workflows/deploy-production.yml
-    with:
-      revision: ${{ needs.release.outputs.commit_sha }}
-    secrets: inherit
