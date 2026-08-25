@@ -38,7 +38,7 @@ jobs:
       - name: Vulnerability scan
         uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
         with:
-          go-version-input: 1.26.5
+          go-version-input: 1.27.0
           go-package: ./...
           cache: false
       - name: Set up Docker Compose
