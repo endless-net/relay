@@ -31,3 +31,12 @@
 - Write repository documentation, comments, diagnostics and workflow labels in English.
 - Describe Relay as a standalone public product with a compatible upstream and operator-owned infrastructure. Keep integration-specific deployment history outside this repository.
 - Preserve published technical identifiers, protocol fields, versions and required license notices when editing prose.
+
+## Version increases
+
+- Never increase any version or generation number, including schema, configuration,
+  API, protocol, contract, manifest, migration, artifact, or rollout versions,
+  without the user's direct explicit permission for that exact increase.
+- A request to implement, refactor, fix, remove compatibility, or make a breaking
+  change does not authorize a version increase. Without explicit permission, keep
+  the current version number.
