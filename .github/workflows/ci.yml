@@ -18,16 +18,16 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3
+      - uses: bufbuild/buf-action@v1
         with:
-          version: "31.0"
-          repo-token: ${{ github.token }}
+          version: 1.72.0
+          setup_only: true
       - name: Verify generated protobuf
         run: |
           go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.10
           go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
-          protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative api/relay/v1/relay.proto
-          git diff --exit-code
+          buf generate
+          git diff --exit-code -- api/relay/v1
       - name: Verify modules
         run: go mod verify
       - name: Verify dependency licenses
