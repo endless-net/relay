@@ -26,18 +26,24 @@ func main() {
 	serviceCertFile := flag.String("service-cert-file", "", "service client certificate")
 	serviceKeyFile := flag.String("service-key-file", "", "service client private key")
 	coordinatorServerName := flag.String("coordinator-server-name", "", "Relay Coordinator TLS server name")
+	trustDomain := flag.String("trust-domain", tlsconfig.DefaultTrustDomain, "SPIFFE trust domain")
+	coordinatorIdentity := flag.String("coordinator-identity", "", "exact Relay Coordinator SPIFFE identity (default derived from trust domain)")
 	timeout := flag.Duration("timeout", 10*time.Second, "smoke timeout")
 	flag.Parse()
 
 	if strings.TrimSpace(*relayAddr) == "" || strings.TrimSpace(*relayServerName) == "" || strings.TrimSpace(*coordinatorHealthURL) == "" {
 		fail(errors.New("relay-addr, relay-server-name, and coordinator-health-url are required"))
 	}
+	policy, err := tlsconfig.NewIdentityPolicy(*trustDomain, *coordinatorIdentity, "")
+	if err != nil {
+		fail(err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
 	if err := checkRelayTLS(ctx, *relayAddr, *relayServerName, *publicCAFile); err != nil {
 		fail(err)
 	}
-	clientTLS, err := tlsconfig.MutualClient(*serviceCertFile, *serviceKeyFile, *serviceCAFile, *coordinatorServerName, "spiffe://endlessnet.ru/service/relay-coordinator", "")
+	clientTLS, err := tlsconfig.MutualClient(*serviceCertFile, *serviceKeyFile, *serviceCAFile, *coordinatorServerName, policy.CoordinatorID, "")
 	if err != nil {
 		fail(err)
 	}
