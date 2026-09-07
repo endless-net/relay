@@ -364,6 +364,85 @@ func TestProductResources(t *testing.T) {
 		defer b.close()
 		waitForTransfer(t, a, b, 30*time.Second)
 	})
+	for _, limits := range []struct {
+		name                       string
+		global, auth, source, held int
+	}{
+		{"global_limit", 4, 4, 4, 4}, {"source_limit", 8, 8, 2, 2}, {"auth_limit", 8, 2, 8, 2},
+	} {
+		t.Run(limits.name, func(t *testing.T) {
+			t.Setenv("E2E_MAX_CONNECTIONS", strconv.Itoa(limits.global))
+			t.Setenv("E2E_MAX_AUTH", strconv.Itoa(limits.auth))
+			t.Setenv("E2E_MAX_SOURCE", strconv.Itoa(limits.source))
+			if err := suite.recreateRelay("relay-c", "limit-"+limits.name); err != nil {
+				t.Fatal(err)
+			}
+			address, err := suite.port(context.Background(), "relay-c", 9443)
+			if err != nil {
+				t.Fatal(err)
+			}
+			connections := []net.Conn{}
+			defer func() {
+				for _, c := range connections {
+					c.Close()
+				}
+			}()
+			for i := 0; i < limits.held; i++ {
+				c, err := net.DialTimeout("tcp", address, time.Second)
+				if err != nil {
+					t.Fatal(err)
+				}
+				connections = append(connections, c)
+			}
+			deadline := time.Now().Add(3 * time.Second)
+			for metricValue(t, "relay-c", "endlessnet_relay_auth_active") < float64(limits.held) {
+				if !time.Now().Before(deadline) {
+					t.Fatal("handshakes not admitted")
+				}
+				waitPoll(deadline)
+			}
+			c, err := net.DialTimeout("tcp", address, time.Second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			name := `endlessnet_relay_connection_rejections_total{reason="` + limits.name + `"}`
+			for metricValue(t, "relay-c", name) == 0 {
+				if !time.Now().Before(deadline) {
+					t.Fatal("limit not enforced")
+				}
+				waitPoll(deadline)
+			}
+			deadline = time.Now().Add(12 * time.Second)
+			for metricValue(t, "relay-c", "endlessnet_relay_auth_active") != 0 {
+				if !time.Now().Before(deadline) {
+					t.Fatal("stalled handshake exceeded deadline")
+				}
+				waitPoll(deadline)
+			}
+			recovered := dialRelayClientEventually(t, "relay-c", "node-c", 10*time.Second)
+			recovered.close()
+		})
+	}
+	t.Run("bandwidth_limit_and_recovery", func(t *testing.T) {
+		t.Setenv("E2E_BANDWIDTH", "1024")
+		if err := suite.recreateRelay("relay-c", "bandwidth"); err != nil {
+			t.Fatal(err)
+		}
+		a := dialRelayClientEventually(t, "relay-c", "node-c", 15*time.Second)
+		defer a.close()
+		b := dialRelayClientEventually(t, "relay-c", "node-d", 15*time.Second)
+		defer b.close()
+		assertTransfer(t, a, b, []byte("within-limit"))
+		if err := a.send("node-d", bytes.Repeat([]byte{1}, 1025)); err != nil {
+			t.Fatal(err)
+		}
+		event := waitEvent(t, a, 3*time.Second)
+		if event.relayErr == nil || event.relayErr.Error != "relay bandwidth limit exceeded" {
+			t.Fatal("bandwidth overflow not rejected")
+		}
+		assertTransfer(t, a, b, []byte("still-available"))
+	})
 	t.Run("bounded_sigterm", func(t *testing.T) {
 		a, b := productClients(t, false)
 		start := time.Now()
