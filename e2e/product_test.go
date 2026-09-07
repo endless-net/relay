@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -261,6 +262,46 @@ func TestProductFencing(t *testing.T) {
 		if _, err = client.RenewSession(ctx, &relayv1.RenewSessionRequest{RelayId: "relay-a", BootId: suite.bootIDs["relay-a"], NetworkId: testNetworkID, NodeId: "node-a", Epoch: second, Credential: credential}); err == nil {
 			t.Fatal("expired session renewed")
 		}
+		var wg sync.WaitGroup
+		epochs := make(chan int64, 8)
+		for i := 0; i < 8; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				response, err := client.AcquireSession(ctx, &relayv1.AcquireSessionRequest{RelayId: "relay-a", BootId: suite.bootIDs["relay-a"], Credential: credential})
+				if err != nil {
+					t.Errorf("concurrent network acquire: %v", err)
+					return
+				}
+				epochs <- response.Epoch
+			}()
+		}
+		wg.Wait()
+		close(epochs)
+		seen := map[int64]bool{}
+		last := second
+		for epoch := range epochs {
+			if seen[epoch] {
+				t.Error("concurrent acquire reused epoch")
+			}
+			seen[epoch] = true
+			if epoch > last {
+				last = epoch
+			}
+		}
+		if len(seen) != 8 {
+			t.Fatal("concurrent acquires did not all succeed")
+		}
+		if _, err = suite.compose(context.Background(), "up", "-d", "--no-deps", "--force-recreate", "relay-coordinator"); err != nil {
+			t.Fatal(err)
+		}
+		restartCtx, restartCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer restartCancel()
+		response, err := client.AcquireSession(restartCtx, &relayv1.AcquireSessionRequest{RelayId: "relay-a", BootId: suite.bootIDs["relay-a"], Credential: credential}, grpc.WaitForReady(true))
+		if err != nil || response.GetEpoch() <= last {
+			t.Fatalf("Coordinator restart reused epoch or failed: %v", err)
+		}
+
 	})
 	t.Run("postgres_outage_recovery", func(t *testing.T) {
 		a, b := productClients(t, false)
