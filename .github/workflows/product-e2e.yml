@@ -78,10 +78,10 @@ jobs:
             test: TestProductProtocol|TestProductTrustRotation
             domain: endlessnet.ru
           - group: spiffe-mesh
-            test: TestMultiRelayInfrastructure|TestProductSPIFFE
+            test: TestMultiRelayInfrastructure|TestProductSPIFFE|TestProductSPIREOutage
             domain: endlessnet.ru
           - group: custom-domain
-            test: TestMultiRelayInfrastructure|TestProductSPIFFE
+            test: TestMultiRelayInfrastructure|TestProductSPIFFE|TestProductSPIREOutage
             domain: operator.example
           - group: fencing-recovery
             test: TestProductSnapshotIdentity|TestProductFencing

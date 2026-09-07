@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"math"
 	"sync"
 	"testing"
 	"time"
@@ -108,5 +109,28 @@ func checkConcurrentEpochs(t *testing.T, s Store) {
 	}
 	if len(seen) != count {
 		t.Fatalf("got %d unique epochs, want %d", len(seen), count)
+	}
+}
+
+func TestMemoryEpochOverflowAndInstanceExpiry(t *testing.T) {
+	s := NewMemory()
+	ctx := context.Background()
+	_, _, err := s.RegisterInstance(ctx, Instance{RelayID: "r", BootID: "b", MeshAddr: "r:9444"}, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := s.AcquireSession(ctx, Session{NetworkID: "n", NodeID: "node", RelayID: "r", BootID: "b"}, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.ResolveSession(ctx, "n", "node", time.Now().Add(2*time.Minute)); err == nil {
+		t.Fatal("expired instance resolved")
+	}
+	session.Epoch = math.MaxInt64
+	for key := range s.sessions {
+		s.sessions[key] = session
+	}
+	if _, err = s.AcquireSession(ctx, session, time.Minute); err == nil {
+		t.Fatal("overflow accepted")
 	}
 }

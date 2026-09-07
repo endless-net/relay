@@ -261,6 +261,25 @@ func TestProductFencing(t *testing.T) {
 			t.Fatal("expired session renewed")
 		}
 	})
+	t.Run("postgres_outage_recovery", func(t *testing.T) {
+		a, b := productClients(t, false)
+		if _, err := suite.compose(context.Background(), "pause", "postgres"); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _, _ = suite.compose(context.Background(), "unpause", "postgres") })
+		waitForClientClose(t, a, 15*time.Second)
+		waitForClientClose(t, b, 15*time.Second)
+		if _, err := suite.compose(context.Background(), "unpause", "postgres"); err != nil {
+			t.Fatal(err)
+		}
+		for _, id := range []string{"relay-a", "relay-b", "relay-c"} {
+			if err := suite.recreateRelay(id, "database-recovery-"+id); err != nil {
+				t.Fatal(err)
+			}
+		}
+		c, d := productClients(t, false)
+		assertTransfer(t, c, d, []byte("database-recovery"))
+	})
 	t.Run("stalled_control_fences_process", func(t *testing.T) {
 		a, b := productClients(t, false)
 		if _, err := suite.compose(context.Background(), "pause", "relay-coordinator"); err != nil {
@@ -285,6 +304,17 @@ func TestProductFencing(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
+		if _, err := suite.compose(context.Background(), "unpause", "relay-coordinator"); err != nil {
+			t.Fatal(err)
+		}
+		for _, id := range []string{"relay-a", "relay-b", "relay-c"} {
+			if err := suite.recreateRelay(id, "long-outage-"+id); err != nil {
+				t.Fatal(err)
+			}
+		}
+		recoveredA, recoveredB := productClients(t, false)
+		assertTransfer(t, recoveredA, recoveredB, []byte("long-outage-recovery"))
+
 	})
 }
 
@@ -608,4 +638,25 @@ func proxyMode(t *testing.T, target, mode string) {
 	if resp.StatusCode != 204 {
 		t.Fatalf("proxy control: %d", resp.StatusCode)
 	}
+}
+
+func TestProductSPIREOutage(t *testing.T) {
+	a, b := productClients(t, false)
+	before := metricValue(t, "relay-a", "endlessnet_relay_heartbeats_total")
+	if _, err := suite.compose(context.Background(), "pause", "spire-server"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = suite.compose(context.Background(), "unpause", "spire-server") })
+	deadline := time.Now().Add(12 * time.Second)
+	for metricValue(t, "relay-a", "endlessnet_relay_heartbeats_total") <= before {
+		assertTransfer(t, a, b, []byte("cached-svid-during-spire-loss"))
+		if !time.Now().Before(deadline) {
+			t.Fatal("relay stopped heartbeat during SPIRE loss")
+		}
+		waitPoll(deadline)
+	}
+	if _, err := suite.compose(context.Background(), "unpause", "spire-server"); err != nil {
+		t.Fatal(err)
+	}
+	assertTransfer(t, b, a, []byte("spire-recovered"))
 }
