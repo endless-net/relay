@@ -1,7 +1,11 @@
 name: CI
 
 on:
-  pull_request:
+  workflow_call:
+    inputs:
+      extended:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       extended:

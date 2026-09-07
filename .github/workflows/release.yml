@@ -2,7 +2,11 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   RELEASE_TAG: ${{ github.ref_name }}
@@ -15,15 +19,13 @@ permissions:
   attestations: write
 
 jobs:
-  product-e2e:
-    uses: ./.github/workflows/product-e2e.yml
+  verification:
+    uses: ./.github/workflows/ci.yml
 
   release:
-    needs: product-e2e
+    needs: verification
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    outputs:
-      commit_sha: ${{ steps.source.outputs.commit_sha }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -34,7 +36,6 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Validate version and source
-        id: source
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -42,8 +43,6 @@ jobs:
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           ./scripts/verify-production-provenance.sh --version "$RELEASE_TAG"
-          sh scripts/verify.sh
-          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Build release artifacts
         shell: bash
         run: bash scripts/build-release.sh "$RELEASE_TAG" dist

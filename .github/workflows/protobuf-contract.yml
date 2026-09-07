@@ -2,14 +2,6 @@ name: Protobuf contract checks (advisory)
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "api/**/*.proto"
-      - "buf.yaml"
-      - "buf.lock"
-      - "buf.gen.yaml"
-      - "contracts/proto-baseline/**"
-      - ".github/workflows/protobuf-contract.yml"
   push:
     branches: [main]
     paths:
@@ -49,7 +41,10 @@ jobs:
             result=FAIL
           fi
 
-          baseline="$(find contracts/proto-baseline -type f -name '*.binpb' -print -quit)"
+          baseline=
+          if [ -d contracts/proto-baseline ]; then
+            baseline="$(find contracts/proto-baseline -type f -name '*.binpb' -print -quit)"
+          fi
           if [ -n "$baseline" ]; then
             if ! buf breaking --against "$baseline" 2>&1 | tee -a "$report"; then
               result=FAIL

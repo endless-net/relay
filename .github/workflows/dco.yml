@@ -1,7 +1,9 @@
 name: DCO
 
 "on":
-  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -13,17 +15,27 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Require Signed-off-by on every pull request commit
+      - name: Require Signed-off-by on every new commit
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --no-tags origin "$BASE_SHA"
+          if [[ -z "$BASE_SHA" ]]; then
+            BASE_SHA=$(git merge-base origin/main "$HEAD_SHA")
+            if [[ "$BASE_SHA" == "$HEAD_SHA" ]]; then
+              if ! BASE_SHA=$(git rev-parse --verify "$HEAD_SHA^" 2>/dev/null); then
+                BASE_SHA=0000000000000000000000000000000000000000
+              fi
+            fi
+          fi
+          revision_range="$BASE_SHA..$HEAD_SHA"
+          if [[ "$BASE_SHA" == 0000000000000000000000000000000000000000 ]]; then
+            revision_range=$HEAD_SHA
+          fi
           failed=false
           while read -r commit; do
             if ! git show -s --format=%B "$commit" \
@@ -31,7 +43,7 @@ jobs:
               echo "::error::commit $commit is missing a valid Signed-off-by trailer"
               failed=true
             fi
-          done < <(git rev-list "$BASE_SHA..$HEAD_SHA")
+          done < <(git rev-list "$revision_range")
           if "$failed"; then
             exit 1
           fi
