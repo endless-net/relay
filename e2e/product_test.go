@@ -224,7 +224,7 @@ func TestProductFencing(t *testing.T) {
 				return err
 			}
 			for _, id := range []string{"relay-a", "relay-b", "relay-c"} {
-				if strings.Contains(raw, id+"\n") {
+				if hasService(raw, id) {
 					return fmt.Errorf("instance still running")
 				}
 			}
@@ -335,4 +335,13 @@ func metricValue(t *testing.T, relayID, name string) float64 {
 	}
 	t.Fatalf("missing metric %s", name)
 	return 0
+}
+
+func hasService(output, service string) bool {
+	for _, name := range strings.Fields(output) {
+		if name == service {
+			return true
+		}
+	}
+	return false
 }
