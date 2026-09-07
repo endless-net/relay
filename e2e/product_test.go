@@ -803,6 +803,15 @@ func TestProductMeshFencing(t *testing.T) {
 	waitForTransfer(t, recovered, b, 20*time.Second)
 }
 func TestProductNoTrustBootstrap(t *testing.T) {
+	t.Run("plaintext_upstream_configuration", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		output, err := suite.compose(ctx, "run", "--rm", "--no-deps", "relay-coordinator", "--postgres-dsn=unused", "--endpoints-file=/fixtures/endpoints.json", "--coordinator-url=http://upstream:9447")
+		if err == nil || !strings.Contains(output, "coordinator-url must be an HTTPS origin") {
+			t.Fatal("plaintext upstream configuration was not rejected at startup")
+		}
+	})
+
 	for _, mode := range []string{"invalid", "unavailable"} {
 		t.Run(mode, func(t *testing.T) {
 			setUpstream(t, map[string]any{"mode": mode})

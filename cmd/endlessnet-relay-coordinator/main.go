@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -49,6 +50,9 @@ func main() {
 
 	if strings.TrimSpace(*dsn) == "" || strings.TrimSpace(*mainCoordinatorURL) == "" || strings.TrimSpace(*endpointsFile) == "" {
 		fatal(errors.New("postgres-dsn, coordinator-url, and endpoints-file are required"))
+	}
+	if err := validateUpstreamURL(*mainCoordinatorURL); err != nil {
+		fatal(err)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -190,4 +194,14 @@ func env(name, fallback string) string {
 func fatal(err error) {
 	slog.Error("relay Coordinator stopped", "error", err)
 	os.Exit(1)
+}
+
+// Validate before opening storage or listeners: a configured HTTP URL must never
+// bypass the SPIFFE TLS transport when credentials leave this process.
+func validateUpstreamURL(raw string) error {
+	parsed, err := url.Parse(raw)
+	if err != nil || raw != strings.TrimSpace(raw) || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+		return errors.New("coordinator-url must be an HTTPS origin without credentials, query, fragment or path prefix")
+	}
+	return nil
 }
