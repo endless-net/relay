@@ -319,3 +319,8 @@ systemctl restart endlessnet-relay.service
 На Coordinator host замените последнее имя unit на
 `endlessnet-relay-coordinator.service`. Откат бинарника не откатывает endpoint
 snapshot: snapshot version в PostgreSQL не может двигаться назад.
+
+Утилита `endlessnet-relay-smoke` принимает `--trust-domain` и
+`--coordinator-identity` с той же exact identity policy, что и runtime.
+Для собственного домена передайте его явно; identity по умолчанию выводится
+из выбранного домена. Противоречивые настройки отклоняются до сетевой проверки.
