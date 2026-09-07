@@ -660,3 +660,112 @@ func TestProductSPIREOutage(t *testing.T) {
 	}
 	assertTransfer(t, b, a, []byte("spire-recovered"))
 }
+
+func TestProductMeshFencing(t *testing.T) {
+	a, b := productClients(t, false)
+	address, err := suite.port(context.Background(), "relay-b", 9444)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, identity := range []string{"relay-a", "wrong-domain"} {
+		conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(credentials.NewTLS(suite.internalClientTLS(suite.certificates[identity], "relay-b"))))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		stream, err := relayv1.NewRelayMeshClient(conn).Connect(ctx)
+		if err == nil {
+			err = stream.Send(&relayv1.MeshMessage{ProtocolVersion: 1, Body: &relayv1.MeshMessage_Hello{Hello: &relayv1.MeshHello{RelayId: "relay-a", BootId: "obsolete-boot"}}})
+		}
+		if err == nil {
+			_, err = stream.Recv()
+		}
+		cancel()
+		conn.Close()
+		if err == nil {
+			t.Fatalf("stale boot or wrong domain accepted: %s", identity)
+		}
+	}
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(credentials.NewTLS(suite.internalClientTLS(suite.certificates["relay-a"], "relay-b"))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	stream, err := relayv1.NewRelayMeshClient(conn).Connect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hello := &relayv1.MeshMessage{ProtocolVersion: 1, Body: &relayv1.MeshMessage_Hello{Hello: &relayv1.MeshHello{RelayId: "relay-a", BootId: suite.bootIDs["relay-a"]}}}
+	if err = stream.Send(hello); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = stream.Recv(); err != nil {
+		t.Fatal(err)
+	}
+	state, err := suite.postgresQuery(ctx, "SELECT epoch FROM node_session_leases WHERE network_id='e2e-network' AND node_id='node-b'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	epoch, err := strconv.ParseInt(strings.TrimSpace(state), 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.close()
+	b = dialRelayClientEventually(t, "relay-b", "node-b", 15*time.Second)
+	defer b.close()
+	payload := []byte("stale-epoch-frame")
+	frame := &relayv1.MeshMessage{ProtocolVersion: 1, Body: &relayv1.MeshMessage_Frame{Frame: &relayv1.MeshFrame{RelayId: "relay-a", BootId: suite.bootIDs["relay-a"], NetworkId: testNetworkID, FromNodeId: "node-a", ToNodeId: "node-b", DestinationEpoch: epoch, Payload: payload}}}
+	if err = stream.Send(frame); err != nil {
+		t.Fatal(err)
+	}
+	assertNoPayload(t, b, payload, time.Second)
+	waitForTransfer(t, a, b, 20*time.Second)
+	if err = suite.recreateRelay("relay-a", "mesh-new-boot"); err != nil {
+		t.Fatal(err)
+	}
+	// Registry propagation must close even an idle inbound stream of the old boot.
+	if _, err = stream.Recv(); err == nil {
+		t.Fatal("old boot stream survived snapshot update")
+	}
+	recovered := dialRelayClientEventually(t, "relay-a", "node-a", 15*time.Second)
+	defer recovered.close()
+	waitForTransfer(t, recovered, b, 20*time.Second)
+}
+func TestProductNoTrustBootstrap(t *testing.T) {
+	for _, mode := range []string{"invalid", "unavailable"} {
+		t.Run(mode, func(t *testing.T) {
+			setUpstream(t, map[string]any{"mode": mode})
+			t.Cleanup(func() { setUpstream(t, map[string]any{"mode": ""}) })
+			if _, err := suite.compose(context.Background(), "up", "-d", "--no-deps", "--force-recreate", "relay-coordinator"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := suite.compose(context.Background(), "up", "-d", "--no-deps", "--force-recreate", "relay-a"); err != nil {
+				t.Fatal(err)
+			}
+			deadline := time.Now().Add(12 * time.Second)
+			for {
+				raw, err := suite.compose(context.Background(), "ps", "--status", "exited", "--services", "relay-a")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if hasService(raw, "relay-a") {
+					break
+				}
+				if !time.Now().Before(deadline) {
+					t.Fatal("Relay started without usable trust")
+				}
+				waitPoll(deadline)
+			}
+			setUpstream(t, map[string]any{"mode": ""})
+			for _, id := range []string{"relay-a", "relay-b", "relay-c"} {
+				if err := suite.recreateRelay(id, mode+"-trust-recovery-"+id); err != nil {
+					t.Fatal(err)
+				}
+			}
+			a, b := productClients(t, false)
+			assertTransfer(t, a, b, []byte("trust-bootstrap-recovery"))
+		})
+	}
+}
