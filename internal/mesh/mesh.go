@@ -17,7 +17,7 @@ import (
 	"google.golang.org/grpc/peer"
 )
 
-type DeliverFunc func(networkID, fromNodeID, toNodeID string, destinationEpoch int64, payload []byte) error
+type DeliverFunc func(networkID, fromNodeID, destinationNetworkID, toNodeID string, destinationEpoch int64, payload []byte) error
 
 type Manager struct {
 	relayv1.UnimplementedRelayMeshServer
@@ -90,7 +90,7 @@ func (m *Manager) UpdatePeers(peers []*relayv1.RelayInstance) {
 	}
 }
 
-func (m *Manager) Forward(_ context.Context, route relay.PeerRoute, networkID, fromNodeID, toNodeID string, payload []byte) error {
+func (m *Manager) Forward(_ context.Context, route relay.PeerRoute, networkID, fromNodeID, destinationNetworkID, toNodeID string, payload []byte) error {
 	if route.RelayID == "" || route.RelayID == m.RelayID {
 		return errors.New("relay mesh route is not remote")
 	}
@@ -103,7 +103,10 @@ func (m *Manager) Forward(_ context.Context, route relay.PeerRoute, networkID, f
 	if !connection.ready.Load() {
 		return errors.New("relay mesh peer is unavailable")
 	}
-	message := &relayv1.MeshMessage{ProtocolVersion: relayv1.MeshProtocolVersion, Body: &relayv1.MeshMessage_Frame{Frame: &relayv1.MeshFrame{RelayId: m.RelayID, BootId: m.BootID, NetworkId: networkID, FromNodeId: fromNodeID, ToNodeId: toNodeID, DestinationEpoch: route.Epoch, Payload: append([]byte(nil), payload...)}}}
+	message := &relayv1.MeshMessage{ProtocolVersion: relayv1.MeshProtocolVersion, Body: &relayv1.MeshMessage_Frame{Frame: &relayv1.MeshFrame{RelayId: m.RelayID, BootId: m.BootID, NetworkId: networkID, DestinationNetworkId: destinationNetworkID, FromNodeId: fromNodeID, ToNodeId: toNodeID, DestinationEpoch: route.Epoch, Payload: append([]byte(nil), payload...)}}}
+	if err := validateMeshMessage(message); err != nil {
+		return err
+	}
 	select {
 	case connection.send <- message:
 		return nil
@@ -153,7 +156,7 @@ func (m *Manager) Connect(stream relayv1.RelayMesh_ConnectServer) error {
 			if frame.GetRelayId() != hello.GetRelayId() || frame.GetBootId() != hello.GetBootId() || m.Deliver == nil {
 				return errors.New("invalid relay mesh frame source")
 			}
-			_ = m.Deliver(frame.GetNetworkId(), frame.GetFromNodeId(), frame.GetToNodeId(), frame.GetDestinationEpoch(), frame.GetPayload())
+			_ = m.Deliver(frame.GetNetworkId(), frame.GetFromNodeId(), frame.GetDestinationNetworkId(), frame.GetToNodeId(), frame.GetDestinationEpoch(), frame.GetPayload())
 		case *relayv1.MeshMessage_Ping:
 			if err := stream.Send(&relayv1.MeshMessage{ProtocolVersion: relayv1.MeshProtocolVersion, Body: &relayv1.MeshMessage_Pong{Pong: &relayv1.MeshPong{}}}); err != nil {
 				return err
@@ -314,7 +317,7 @@ func validateMeshMessage(message *relayv1.MeshMessage) error {
 		return errors.New("unsupported relay mesh protocol")
 	}
 	if frame := message.GetFrame(); frame != nil {
-		if !canonicalRequired(frame.GetRelayId()) || !canonicalRequired(frame.GetBootId()) || !canonicalRequired(frame.GetNetworkId()) || !canonicalRequired(frame.GetFromNodeId()) || !canonicalRequired(frame.GetToNodeId()) || frame.GetDestinationEpoch() <= 0 || len(frame.GetPayload()) == 0 || len(frame.GetPayload()) > relay.MaxFramePayloadBytes {
+		if !canonicalRequired(frame.GetRelayId()) || !canonicalRequired(frame.GetBootId()) || !canonicalRequired(frame.GetNetworkId()) || !canonicalRequired(frame.GetDestinationNetworkId()) || !canonicalRequired(frame.GetFromNodeId()) || !canonicalRequired(frame.GetToNodeId()) || frame.GetDestinationEpoch() <= 0 || len(frame.GetPayload()) == 0 || len(frame.GetPayload()) > relay.MaxFramePayloadBytes {
 			return errors.New("invalid relay mesh frame")
 		}
 	}

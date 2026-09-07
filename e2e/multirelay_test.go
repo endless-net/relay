@@ -34,14 +34,15 @@ type relayEvent struct {
 }
 
 type relayClient struct {
-	relayID string
-	nodeID  string
-	conn    *tls.Conn
-	writer  *bufio.Writer
-	events  chan relayEvent
-	closed  chan struct{}
-	writeMu sync.Mutex
-	closeMu sync.Once
+	networkID string
+	relayID   string
+	nodeID    string
+	conn      *tls.Conn
+	writer    *bufio.Writer
+	events    chan relayEvent
+	closed    chan struct{}
+	writeMu   sync.Mutex
+	closeMu   sync.Once
 }
 
 func TestMultiRelayInfrastructure(t *testing.T) {
@@ -351,6 +352,9 @@ func (h *harness) dialRelayClient(relayID, nodeID string) (*relayClient, error) 
 	return h.dialRelayClientReading(relayID, nodeID, true)
 }
 func (h *harness) dialRelayClientReading(relayID, nodeID string, read bool) (*relayClient, error) {
+	return h.dialScopedRelayClientReading(relayID, testNetworkID, nodeID, read)
+}
+func (h *harness) dialScopedRelayClientReading(relayID, networkID, nodeID string, read bool) (*relayClient, error) {
 	address, err := h.port(context.Background(), relayID, 9443)
 	if err != nil {
 		return nil, err
@@ -363,7 +367,7 @@ func (h *harness) dialRelayClientReading(relayID, nodeID string, read bool) (*re
 		return nil, err
 	}
 	connection := rawConnection.(*tls.Conn)
-	credential, err := protocolv1.Sign(h.signingKey, testNetworkID, nodeID, time.Now().UTC().Add(10*time.Minute))
+	credential, err := protocolv1.Sign(h.signingKey, networkID, nodeID, time.Now().UTC().Add(10*time.Minute))
 	if err != nil {
 		_ = connection.Close()
 		return nil, err
@@ -400,7 +404,7 @@ func (h *harness) dialRelayClientReading(relayID, nodeID string, read bool) (*re
 		_ = connection.Close()
 		return nil, fmt.Errorf("relay ready message = %#v", ready)
 	}
-	client := &relayClient{relayID: relayID, nodeID: nodeID, conn: connection, writer: writer, events: make(chan relayEvent, 128), closed: make(chan struct{})}
+	client := &relayClient{networkID: networkID, relayID: relayID, nodeID: nodeID, conn: connection, writer: writer, events: make(chan relayEvent, 128), closed: make(chan struct{})}
 	if read {
 		go client.readLoop(decoder)
 	}
@@ -465,13 +469,16 @@ func (c *relayClient) publish(event relayEvent) {
 }
 
 func (c *relayClient) send(peerID string, payload []byte) error {
+	return c.sendScoped(c.networkID, peerID, payload)
+}
+func (c *relayClient) sendScoped(peerNetworkID, peerID string, payload []byte) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 	if err := c.conn.SetWriteDeadline(time.Now().Add(3 * time.Second)); err != nil {
 		return err
 	}
 	defer func() { _ = c.conn.SetWriteDeadline(time.Time{}) }()
-	if err := json.NewEncoder(c.writer).Encode(protocolv1.ClientFrame{Type: protocolv1.MessageClientFrame, ProtocolVersion: protocolv1.Version, PeerID: peerID, Payload: payload}); err != nil {
+	if err := json.NewEncoder(c.writer).Encode(protocolv1.ClientFrame{Type: protocolv1.MessageClientFrame, ProtocolVersion: protocolv1.Version, PeerNetworkID: peerNetworkID, PeerID: peerID, Payload: payload}); err != nil {
 		return err
 	}
 	return c.writer.Flush()
@@ -490,7 +497,7 @@ func waitForTransfer(t *testing.T, from, to *relayClient, timeout time.Duration)
 	deadline := time.Now().Add(timeout)
 	for attempt := 1; time.Now().Before(deadline); attempt++ {
 		payload := []byte(fmt.Sprintf("probe-%s-%s-%d", from.nodeID, to.nodeID, attempt))
-		if err := from.send(to.nodeID, payload); err != nil {
+		if err := from.sendScoped(to.networkID, to.nodeID, payload); err != nil {
 			waitPoll(deadline)
 			continue
 		}
@@ -499,7 +506,7 @@ func waitForTransfer(t *testing.T, from, to *relayClient, timeout time.Duration)
 		for !delivered {
 			select {
 			case event := <-to.events:
-				if event.frame != nil && event.frame.FromNodeID == from.nodeID && bytes.Equal(event.frame.Payload, payload) {
+				if event.frame != nil && event.frame.FromNetworkID == from.networkID && event.frame.FromNodeID == from.nodeID && bytes.Equal(event.frame.Payload, payload) {
 					delivered = true
 				}
 			case <-from.events:
@@ -524,7 +531,7 @@ func assertTransfer(t *testing.T, from, to *relayClient, payload []byte) {
 	t.Helper()
 	drainEvents(from)
 	drainEvents(to)
-	if err := from.send(to.nodeID, payload); err != nil {
+	if err := from.sendScoped(to.networkID, to.nodeID, payload); err != nil {
 		t.Fatal(err)
 	}
 	timer := time.NewTimer(4 * time.Second)
@@ -538,7 +545,7 @@ func assertTransfer(t *testing.T, from, to *relayClient, payload []byte) {
 			if event.frame == nil {
 				continue
 			}
-			if event.frame.ProtocolVersion != protocolv1.Version || event.frame.FromNodeID != from.nodeID || !bytes.Equal(event.frame.Payload, payload) {
+			if event.frame.ProtocolVersion != protocolv1.Version || event.frame.FromNetworkID != from.networkID || event.frame.FromNodeID != from.nodeID || !bytes.Equal(event.frame.Payload, payload) {
 				t.Fatal("delivered frame source or payload differs")
 			}
 			assertNoPayload(t, to, payload, 200*time.Millisecond)

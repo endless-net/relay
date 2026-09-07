@@ -33,7 +33,8 @@ const (
 type RelayUpstreamServiceClient interface {
 	// OK authorizes the credential; PermissionDenied or Unauthenticated denies it.
 	AuthorizeCredential(ctx context.Context, in *AuthorizeCredentialRequest, opts ...grpc.CallOption) (*AuthorizeCredentialResponse, error)
-	// Authorization is directional: source credential -> peer_id in the same network.
+	// Authorization is directional: source credential -> peer_network_id/peer_id.
+	// Cross-network pairs require an explicit current upstream permission.
 	AuthorizePeerPair(ctx context.Context, in *AuthorizePeerPairRequest, opts ...grpc.CallOption) (*AuthorizePeerPairResponse, error)
 	GetTrustBundle(ctx context.Context, in *GetTrustBundleRequest, opts ...grpc.CallOption) (*GetTrustBundleResponse, error)
 }
@@ -85,7 +86,8 @@ func (c *relayUpstreamServiceClient) GetTrustBundle(ctx context.Context, in *Get
 type RelayUpstreamServiceServer interface {
 	// OK authorizes the credential; PermissionDenied or Unauthenticated denies it.
 	AuthorizeCredential(context.Context, *AuthorizeCredentialRequest) (*AuthorizeCredentialResponse, error)
-	// Authorization is directional: source credential -> peer_id in the same network.
+	// Authorization is directional: source credential -> peer_network_id/peer_id.
+	// Cross-network pairs require an explicit current upstream permission.
 	AuthorizePeerPair(context.Context, *AuthorizePeerPairRequest) (*AuthorizePeerPairResponse, error)
 	GetTrustBundle(context.Context, *GetTrustBundleRequest) (*GetTrustBundleResponse, error)
 	mustEmbedUnimplementedRelayUpstreamServiceServer()

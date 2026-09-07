@@ -56,7 +56,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 
 type localMesh struct{}
 
-func (localMesh) Forward(context.Context, relay.PeerRoute, string, string, string, []byte) error {
+func (localMesh) Forward(context.Context, relay.PeerRoute, string, string, string, string, []byte) error {
 	return errors.New("relay test fixture does not provide remote mesh forwarding")
 }
 
@@ -101,10 +101,10 @@ func (c *control) ReleaseSession(_ context.Context, lease relay.SessionLease) er
 	return nil
 }
 
-func (c *control) AuthorizePeer(_ context.Context, credential protocolv1.Credential, _ int64, peerID string) (relay.PeerRoute, error) {
+func (c *control) AuthorizePeer(_ context.Context, credential protocolv1.Credential, _ int64, peerNetworkID, peerID string) (relay.PeerRoute, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	peer, ok := c.sessions[sessionKey(credential.NetworkID, peerID)]
+	peer, ok := c.sessions[sessionKey(peerNetworkID, peerID)]
 	if !ok {
 		return relay.PeerRoute{}, errors.New("relay test peer is not connected")
 	}

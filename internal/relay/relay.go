@@ -199,14 +199,14 @@ func (s *Server) validateConfiguration() error {
 	return nil
 }
 
-func (s *Server) authorizePeer(ctx context.Context, credential protocolv1.Credential, sourceEpoch int64, peerID string) (PeerRoute, error) {
+func (s *Server) authorizePeer(ctx context.Context, credential protocolv1.Credential, sourceEpoch int64, peerNetworkID, peerID string) (PeerRoute, error) {
 	authorizationCtx := ctx
 	var cancel context.CancelFunc
 	if timeout := s.authTimeout(); timeout > 0 {
 		authorizationCtx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
-	return s.Control.AuthorizePeer(authorizationCtx, credential, sourceEpoch, peerID)
+	return s.Control.AuthorizePeer(authorizationCtx, credential, sourceEpoch, peerNetworkID, peerID)
 }
 
 func (s *Server) handleConn(ctx context.Context, conn net.Conn) {
@@ -319,7 +319,7 @@ func (s *Server) handleConn(ctx context.Context, conn net.Conn) {
 			return
 		}
 		peerID := frame.PeerID
-		if peerID == sess.nodeID {
+		if frame.PeerNetworkID == sess.networkID && peerID == sess.nodeID {
 			s.metrics().recordDrop("invalid")
 			sess.writeError("relay peer_id cannot target the sending node")
 			return
@@ -329,7 +329,7 @@ func (s *Server) handleConn(ctx context.Context, conn net.Conn) {
 			sess.writeError("relay bandwidth limit exceeded")
 			return
 		}
-		route, err := s.authorizePeer(sess.ctx, sess.credential, sess.lease.Epoch, peerID)
+		route, err := s.authorizePeer(sess.ctx, sess.credential, sess.lease.Epoch, frame.PeerNetworkID, peerID)
 		if err != nil {
 			s.metrics().recordDrop("acl")
 			writeErr := sess.writeError("relay peer is not allowed")
@@ -341,24 +341,24 @@ func (s *Server) handleConn(ctx context.Context, conn net.Conn) {
 		}
 		s.metrics().recordInboundFrame(len(frame.Payload))
 		if route.RelayID != s.RelayID {
-			if s.Mesh.Forward(ctx, route, sess.networkID, sess.nodeID, peerID, frame.Payload) != nil {
+			if s.Mesh.Forward(ctx, route, sess.networkID, sess.nodeID, frame.PeerNetworkID, peerID, frame.Payload) != nil {
 				s.metrics().recordDrop("mesh")
 				sess.writeError("relay peer forwarding failed")
 			}
 			continue
 		}
-		peer := s.peerSession(sess.networkID, peerID)
+		peer := s.peerSession(frame.PeerNetworkID, peerID)
 		if peer == nil {
 			s.metrics().recordDrop("no_peer")
 			sess.writeError("relay peer is not connected")
 			continue
 		}
-		if peer.lease.Epoch != route.Epoch {
+		if peer.lease.Epoch != route.Epoch || peer.lease.BootID != route.BootID {
 			s.metrics().recordDrop("fenced")
 			sess.writeError("relay peer session is fenced")
 			continue
 		}
-		if err := peer.enqueueFrame(newServerFrame(sess.nodeID, frame.Payload)); err != nil {
+		if err := peer.enqueueFrame(newServerFrame(sess.networkID, sess.nodeID, frame.Payload)); err != nil {
 			s.metrics().recordDrop("slow_consumer")
 			peer.close()
 			sess.writeError("relay peer write failed")
@@ -706,16 +706,16 @@ func readLine(reader *bufio.Reader) ([]byte, error) {
 	return line, nil
 }
 
-func newServerFrame(fromNodeID string, payload []byte) protocolv1.ServerFrame {
-	return protocolv1.ServerFrame{Type: protocolv1.MessageServerFrame, ProtocolVersion: protocolv1.Version, FromNodeID: fromNodeID, Payload: payload}
+func newServerFrame(fromNetworkID, fromNodeID string, payload []byte) protocolv1.ServerFrame {
+	return protocolv1.ServerFrame{Type: protocolv1.MessageServerFrame, ProtocolVersion: protocolv1.Version, FromNodeID: fromNodeID, FromNetworkID: fromNetworkID, Payload: payload}
 }
 
-func (s *Server) DeliverRemote(networkID, fromNodeID, toNodeID string, destinationEpoch int64, payload []byte) error {
-	if networkID == "" || networkID != strings.TrimSpace(networkID) || fromNodeID == "" || fromNodeID != strings.TrimSpace(fromNodeID) || toNodeID == "" || toNodeID != strings.TrimSpace(toNodeID) || destinationEpoch <= 0 || len(payload) == 0 || len(payload) > MaxFramePayloadBytes {
+func (s *Server) DeliverRemote(networkID, fromNodeID, destinationNetworkID, toNodeID string, destinationEpoch int64, payload []byte) error {
+	if destinationNetworkID == "" || destinationNetworkID != strings.TrimSpace(destinationNetworkID) || networkID == "" || networkID != strings.TrimSpace(networkID) || fromNodeID == "" || fromNodeID != strings.TrimSpace(fromNodeID) || toNodeID == "" || toNodeID != strings.TrimSpace(toNodeID) || destinationEpoch <= 0 || len(payload) == 0 || len(payload) > MaxFramePayloadBytes {
 		s.metrics().recordDrop("invalid")
 		return errors.New("invalid relay mesh payload")
 	}
-	peer := s.peerSession(networkID, toNodeID)
+	peer := s.peerSession(destinationNetworkID, toNodeID)
 	if peer == nil {
 		s.metrics().recordDrop("no_peer")
 		return errors.New("relay mesh destination is not connected")
@@ -724,7 +724,7 @@ func (s *Server) DeliverRemote(networkID, fromNodeID, toNodeID string, destinati
 		s.metrics().recordDrop("fenced")
 		return ErrDestinationFenced
 	}
-	if err := peer.enqueueFrame(newServerFrame(fromNodeID, payload)); err != nil {
+	if err := peer.enqueueFrame(newServerFrame(networkID, fromNodeID, payload)); err != nil {
 		s.metrics().recordDrop("slow_consumer")
 		peer.close()
 		return err

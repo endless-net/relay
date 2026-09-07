@@ -125,17 +125,17 @@ sequenceDiagram
     participant RB as Relay B
     participant B as Node B
 
-    A->>RA: client_frame(peer_id=B, payload)
+    A->>RA: client_frame(peer_network_id=N, peer_id=B, payload)
     RA->>RC: AuthorizePeer(credential, source_epoch, B)
     RC->>PG: Check source lease and resolve destination lease
     RC->>UP: Check ACL through cache
     RC-->>RA: relay_id, boot_id, destination_epoch
     alt B is connected to Relay A
-        RA->>B: server_frame(from_node_id=A, payload)
+        RA->>B: server_frame(from_network_id=M, from_node_id=A, payload)
     else B is connected to Relay B
         RA->>RB: Mesh frame + destination_epoch
         RB->>RB: Check local epoch
-        RB->>B: server_frame(from_node_id=A, payload)
+        RB->>B: server_frame(from_network_id=M, from_node_id=A, payload)
     end
 ```
 
@@ -177,8 +177,8 @@ The format is one JSON message per line. Every message requires `type` and
 | --- | --- | --- |
 | Client to Relay | `client_hello` | Authentication and heartbeat settings |
 | Relay to client | `ready` | Session accepted |
-| Client to Relay | `client_frame` | `peer_id` and opaque payload |
-| Relay to client | `server_frame` | `from_node_id` and opaque payload |
+| Client to Relay | `client_frame` | `peer_network_id`, `peer_id` and opaque payload |
+| Relay to client | `server_frame` | `from_network_id`, `from_node_id` and opaque payload |
 | Relay to client | `heartbeat` | Keepalive requested by the client |
 | Relay to client | `error` | Protocol, ACL, route or resource rejection |
 

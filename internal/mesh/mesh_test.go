@@ -36,14 +36,14 @@ func TestManagersForwardOneHopAcrossRelays(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	type deliveredFrame struct {
-		networkID, fromNodeID, toNodeID string
-		epoch                           int64
-		payload                         []byte
+		networkID, fromNodeID, destinationNetworkID, toNodeID string
+		epoch                                                 int64
+		payload                                               []byte
 	}
 	delivered := make(chan deliveredFrame, 1)
 	managerA := NewManager(ctx, "relay-a", "boot-a", clientConfig(certA), nil)
-	managerB := NewManager(ctx, "relay-b", "boot-b", clientConfig(certB), func(networkID, fromNodeID, toNodeID string, epoch int64, payload []byte) error {
-		delivered <- deliveredFrame{networkID: networkID, fromNodeID: fromNodeID, toNodeID: toNodeID, epoch: epoch, payload: payload}
+	managerB := NewManager(ctx, "relay-b", "boot-b", clientConfig(certB), func(networkID, fromNodeID, destinationNetworkID, toNodeID string, epoch int64, payload []byte) error {
+		delivered <- deliveredFrame{networkID: networkID, destinationNetworkID: destinationNetworkID, fromNodeID: fromNodeID, toNodeID: toNodeID, epoch: epoch, payload: payload}
 		return nil
 	})
 	defer managerA.Close()
@@ -64,7 +64,7 @@ func TestManagersForwardOneHopAcrossRelays(t *testing.T) {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		err := managerA.Forward(ctx, relay.PeerRoute{RelayID: "relay-b", BootID: "boot-b", Epoch: 9}, "network", "node-a", "node-b", []byte("opaque"))
+		err := managerA.Forward(ctx, relay.PeerRoute{RelayID: "relay-b", BootID: "boot-b", Epoch: 9}, "network", "node-a", "destination-network", "node-b", []byte("opaque"))
 		if err == nil {
 			break
 		}
@@ -76,7 +76,7 @@ func TestManagersForwardOneHopAcrossRelays(t *testing.T) {
 	}
 	select {
 	case frame := <-delivered:
-		if frame.networkID != "network" || frame.fromNodeID != "node-a" || frame.toNodeID != "node-b" || frame.epoch != 9 || string(frame.payload) != "opaque" {
+		if frame.networkID != "network" || frame.destinationNetworkID != "destination-network" || frame.fromNodeID != "node-a" || frame.toNodeID != "node-b" || frame.epoch != 9 || string(frame.payload) != "opaque" {
 			t.Fatalf("delivered frame = %#v", frame)
 		}
 	case <-time.After(10 * time.Second):
@@ -88,7 +88,7 @@ func TestForwardRejectsStalePeerBoot(t *testing.T) {
 	manager := NewManager(context.Background(), "relay-a", "boot-a", &tls.Config{MinVersion: tls.VersionTLS13}, nil)
 	defer manager.Close()
 	manager.UpdatePeers([]*relayv1.RelayInstance{{RelayId: "relay-b", BootId: "new-boot", MeshAddr: "127.0.0.1:1"}})
-	err := manager.Forward(context.Background(), relay.PeerRoute{RelayID: "relay-b", BootID: "old-boot", Epoch: 1}, "network", "a", "b", []byte("frame"))
+	err := manager.Forward(context.Background(), relay.PeerRoute{RelayID: "relay-b", BootID: "old-boot", Epoch: 1}, "network", "a", "destination-network", "b", []byte("frame"))
 	if err != relay.ErrDestinationFenced {
 		t.Fatalf("stale boot forwarding error = %v", err)
 	}
@@ -98,7 +98,7 @@ func TestForwardRejectsUnavailablePeer(t *testing.T) {
 	manager := NewManager(context.Background(), "relay-a", "boot-a", &tls.Config{MinVersion: tls.VersionTLS13}, nil)
 	defer manager.Close()
 	manager.UpdatePeers([]*relayv1.RelayInstance{{RelayId: "relay-b", BootId: "boot-b", MeshAddr: "127.0.0.1:1"}})
-	err := manager.Forward(context.Background(), relay.PeerRoute{RelayID: "relay-b", BootID: "boot-b", Epoch: 1}, "network", "a", "b", []byte("frame"))
+	err := manager.Forward(context.Background(), relay.PeerRoute{RelayID: "relay-b", BootID: "boot-b", Epoch: 1}, "network", "a", "destination-network", "b", []byte("frame"))
 	if err == nil || err.Error() != "relay mesh peer is unavailable" {
 		t.Fatalf("unavailable peer forwarding error = %v", err)
 	}
@@ -158,4 +158,19 @@ func testRelayCertificate(t *testing.T, ca *x509.Certificate, caKey *ecdsa.Priva
 		t.Fatal(err)
 	}
 	return tls.Certificate{Certificate: [][]byte{raw, ca.Raw}, PrivateKey: key}
+}
+
+func TestMeshFrameRequiresExplicitDestinationNetwork(t *testing.T) {
+	frame := &relayv1.MeshFrame{RelayId: "a", BootId: "boot", NetworkId: "source", FromNodeId: "same-node", ToNodeId: "same-node", DestinationEpoch: 1, Payload: []byte("opaque")}
+	message := &relayv1.MeshMessage{ProtocolVersion: relayv1.MeshProtocolVersion, Body: &relayv1.MeshMessage_Frame{Frame: frame}}
+	for _, network := range []string{"", " target", "target "} {
+		frame.DestinationNetworkId = network
+		if err := validateMeshMessage(message); err == nil {
+			t.Fatalf("accepted destination network %q", network)
+		}
+	}
+	frame.DestinationNetworkId = "target"
+	if err := validateMeshMessage(message); err != nil {
+		t.Fatal(err)
+	}
 }

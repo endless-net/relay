@@ -26,11 +26,11 @@ type ControlPlane interface {
 	AcquireSession(context.Context, protocolv1.Credential) (SessionLease, error)
 	RenewSession(context.Context, SessionLease) error
 	ReleaseSession(context.Context, SessionLease) error
-	AuthorizePeer(context.Context, protocolv1.Credential, int64, string) (PeerRoute, error)
+	AuthorizePeer(context.Context, protocolv1.Credential, int64, string, string) (PeerRoute, error)
 }
 
 type MeshForwarder interface {
-	Forward(context.Context, PeerRoute, string, string, string, []byte) error
+	Forward(context.Context, PeerRoute, string, string, string, string, []byte) error
 }
 
 var (

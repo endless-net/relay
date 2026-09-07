@@ -292,12 +292,16 @@ type ClientFrame struct {
 	Type            string `json:"type"`
 	ProtocolVersion int    `json:"protocol_version"`
 	PeerID          string `json:"peer_id"`
+	PeerNetworkID   string `json:"peer_network_id"`
 	Payload         []byte `json:"payload"`
 }
 
 func (m ClientFrame) Validate() error {
 	if m.Type != MessageClientFrame || m.ProtocolVersion != Version {
 		return errors.New("unsupported relay protocol")
+	}
+	if !isCanonicalRequired(m.PeerNetworkID) {
+		return errors.New("relay peer_network_id is required")
 	}
 	if !isCanonicalRequired(m.PeerID) {
 		return errors.New("relay peer_id is required")
@@ -315,6 +319,7 @@ type ServerFrame struct {
 	Type            string `json:"type"`
 	ProtocolVersion int    `json:"protocol_version"`
 	FromNodeID      string `json:"from_node_id"`
+	FromNetworkID   string `json:"from_network_id"`
 	Payload         []byte `json:"payload"`
 }
 

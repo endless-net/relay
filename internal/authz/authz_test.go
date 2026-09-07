@@ -20,7 +20,7 @@ func (s *stubAuthorizer) AuthorizeCredential(context.Context, protocolv1.Credent
 	return s.err
 }
 
-func (s *stubAuthorizer) AuthorizePeer(context.Context, protocolv1.Credential, string) error {
+func (s *stubAuthorizer) AuthorizePeer(context.Context, protocolv1.Credential, string, string) error {
 	s.calls++
 	return s.err
 }
@@ -46,6 +46,33 @@ func TestCacheUsesPositiveStaleWindowOnlyOnUpstreamFailure(t *testing.T) {
 	now = now.Add(25 * time.Second)
 	if err := cache.AuthorizeCredential(context.Background(), credential); err == nil {
 		t.Fatal("authorization survived beyond stale window")
+	}
+}
+
+func TestPeerCacheSeparatesDestinationNetworks(t *testing.T) {
+	upstream := &stubAuthorizer{}
+	cache := NewCache(upstream)
+	credential := protocolv1.Credential{NetworkID: "source-network", NodeID: "source", ExpiresAt: time.Now().Add(time.Hour)}
+	if err := cache.AuthorizePeer(t.Context(), credential, "allowed-network", "same-node"); err != nil {
+		t.Fatal(err)
+	}
+	upstream.err = ErrDenied
+	if err := cache.AuthorizePeer(t.Context(), credential, "other-network", "same-node"); !errors.Is(err, ErrDenied) {
+		t.Fatal("another network reused positive decision", err)
+	}
+	if err := cache.AuthorizePeer(t.Context(), credential, "allowed-network", "same-node"); err != nil {
+		t.Fatal("negative decision polluted another network", err)
+	}
+	if upstream.calls != 2 {
+		t.Fatalf("upstream calls=%d", upstream.calls)
+	}
+	for _, network := range []string{"", " allowed-network", "allowed-network "} {
+		if err := cache.AuthorizePeer(t.Context(), credential, network, "same-node"); err == nil {
+			t.Fatal("noncanonical network accepted")
+		}
+	}
+	if upstream.calls != 2 {
+		t.Fatal("invalid network reached upstream")
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,7 +17,7 @@ var ErrDenied = errors.New("relay authorization denied")
 
 type Authorizer interface {
 	AuthorizeCredential(context.Context, protocolv1.Credential) error
-	AuthorizePeer(context.Context, protocolv1.Credential, string) error
+	AuthorizePeer(context.Context, protocolv1.Credential, string, string) error
 	RelayTrustBundle(context.Context) (protocolv1.SigningTrustBundle, error)
 }
 
@@ -48,15 +49,22 @@ func NewCache(upstream Authorizer) *Cache {
 }
 
 func (c *Cache) AuthorizeCredential(ctx context.Context, credential protocolv1.Credential) error {
-	return c.cached(cacheKey("credential", credential, ""), credential.ExpiresAt, func() error {
+	return c.cached(cacheKey("credential", credential, "", ""), credential.ExpiresAt, func() error {
 		return c.Upstream.AuthorizeCredential(ctx, credential)
 	})
 }
 
-func (c *Cache) AuthorizePeer(ctx context.Context, credential protocolv1.Credential, peerID string) error {
-	return c.cached(cacheKey("peer", credential, peerID), credential.ExpiresAt, func() error {
-		return c.Upstream.AuthorizePeer(ctx, credential, peerID)
+func (c *Cache) AuthorizePeer(ctx context.Context, credential protocolv1.Credential, peerNetworkID, peerID string) error {
+	if !validPeerScope(peerNetworkID, peerID) {
+		return errors.New("canonical destination network and peer are required")
+	}
+	return c.cached(cacheKey("peer", credential, peerNetworkID, peerID), credential.ExpiresAt, func() error {
+		return c.Upstream.AuthorizePeer(ctx, credential, peerNetworkID, peerID)
 	})
+}
+
+func validPeerScope(network, node string) bool {
+	return network != "" && node != "" && network == strings.TrimSpace(network) && node == strings.TrimSpace(node)
 }
 
 func (c *Cache) cached(key string, expires time.Time, load func() error) error {
@@ -147,12 +155,13 @@ func (c *Cache) now() time.Time {
 	return time.Now().UTC()
 }
 
-func cacheKey(action string, credential protocolv1.Credential, peerID string) string {
+func cacheKey(action string, credential protocolv1.Credential, peerNetworkID, peerID string) string {
 	raw, _ := json.Marshal(struct {
-		Action     string                `json:"action"`
-		Credential protocolv1.Credential `json:"credential"`
-		PeerID     string                `json:"peer_id"`
-	}{action, credential, peerID})
+		Action        string                `json:"action"`
+		Credential    protocolv1.Credential `json:"credential"`
+		PeerID        string                `json:"peer_id"`
+		PeerNetworkID string                `json:"peer_network_id"`
+	}{action, credential, peerID, peerNetworkID})
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
 }

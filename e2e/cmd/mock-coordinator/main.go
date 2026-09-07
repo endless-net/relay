@@ -33,10 +33,19 @@ const (
 )
 
 type config struct {
+	Networks    map[string][]string           `json:"networks"`
+	ScopedPairs []scopedPair                  `json:"scoped_pairs"`
 	NetworkID   string                        `json:"network_id"`
 	Nodes       []string                      `json:"nodes"`
 	PeerPairs   []peerPair                    `json:"peer_pairs"`
 	TrustBundle protocolv1.SigningTrustBundle `json:"relay_trust_bundle"`
+}
+
+type scopedPair struct {
+	FromNetwork string `json:"from_network"`
+	From        string `json:"from"`
+	ToNetwork   string `json:"to_network"`
+	To          string `json:"to"`
 }
 
 type peerPair struct {
@@ -135,10 +144,18 @@ func loadConfig(path string) (config, error) {
 func newServer(cfg config) *server {
 	s := &server{config: cfg, nodes: make(map[string]struct{}, len(cfg.Nodes)), pairs: make(map[string]struct{}, len(cfg.PeerPairs))}
 	for _, node := range cfg.Nodes {
-		s.nodes[strings.TrimSpace(node)] = struct{}{}
+		s.nodes[pairKey(cfg.NetworkID, node)] = struct{}{}
 	}
 	for _, pair := range cfg.PeerPairs {
-		s.pairs[pairKey(pair.From, pair.To)] = struct{}{}
+		s.pairs[pairKey(pairKey(cfg.NetworkID, pair.From), pairKey(cfg.NetworkID, pair.To))] = struct{}{}
+	}
+	for network, nodes := range cfg.Networks {
+		for _, node := range nodes {
+			s.nodes[pairKey(network, node)] = struct{}{}
+		}
+	}
+	for _, pair := range cfg.ScopedPairs {
+		s.pairs[pairKey(pairKey(pair.FromNetwork, pair.From), pairKey(pair.ToNetwork, pair.To))] = struct{}{}
 	}
 	return s
 }
@@ -186,13 +203,13 @@ func (s *server) AuthorizePeerPair(ctx context.Context, request *relayv1.Authori
 		return nil, err
 	}
 	credential, err := relayv1.CredentialToProtocol(request.GetCredential())
-	if err != nil || request.GetPeerId() == "" || request.GetPeerId() != strings.TrimSpace(request.GetPeerId()) {
+	if err != nil || request.GetPeerNetworkId() == "" || request.GetPeerNetworkId() != strings.TrimSpace(request.GetPeerNetworkId()) || request.GetPeerId() == "" || request.GetPeerId() != strings.TrimSpace(request.GetPeerId()) {
 		return nil, status.Error(codes.InvalidArgument, "invalid peer authorization")
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	_, activeTarget := s.nodes[request.GetPeerId()]
-	_, allowedPair := s.pairs[pairKey(credential.NodeID, request.GetPeerId())]
+	_, activeTarget := s.nodes[pairKey(request.GetPeerNetworkId(), request.GetPeerId())]
+	_, allowedPair := s.pairs[pairKey(pairKey(credential.NetworkID, credential.NodeID), pairKey(request.GetPeerNetworkId(), request.GetPeerId()))]
 	if !s.authorizeCredential(credential) || !activeTarget || !allowedPair {
 		return nil, status.Error(codes.PermissionDenied, "peer pair denied")
 	}
@@ -202,10 +219,7 @@ func (s *server) AuthorizePeerPair(ctx context.Context, request *relayv1.Authori
 // Called under s.mu; signature, expiry and domain policy remain independent of
 // the Relay Coordinator's client adapter and authorization cache.
 func (s *server) authorizeCredential(credential protocolv1.Credential) bool {
-	if credential.NetworkID != s.config.NetworkID {
-		return false
-	}
-	if _, ok := s.nodes[credential.NodeID]; !ok {
+	if _, ok := s.nodes[pairKey(credential.NetworkID, credential.NodeID)]; !ok {
 		return false
 	}
 	now := time.Now().UTC()

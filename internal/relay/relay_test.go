@@ -30,7 +30,7 @@ type testControl struct {
 	sessions      map[string]SessionLease
 	acquireHook   func(context.Context, protocolv1.Credential) (SessionLease, error)
 	renewHook     func(context.Context, SessionLease) error
-	authorizeHook func(context.Context, protocolv1.Credential, int64, string) (PeerRoute, error)
+	authorizeHook func(context.Context, protocolv1.Credential, int64, string, string) (PeerRoute, error)
 }
 
 func (c *testControl) AcquireSession(ctx context.Context, credential protocolv1.Credential) (SessionLease, error) {
@@ -44,7 +44,7 @@ func (c *testControl) AcquireSession(ctx context.Context, credential protocolv1.
 	if c.sessions == nil {
 		c.sessions = make(map[string]SessionLease)
 	}
-	c.sessions[credential.NodeID] = lease
+	c.sessions[credential.NetworkID+"/"+credential.NodeID] = lease
 	return lease, nil
 }
 
@@ -57,13 +57,13 @@ func (c *testControl) RenewSession(ctx context.Context, lease SessionLease) erro
 
 func (c *testControl) ReleaseSession(context.Context, SessionLease) error { return nil }
 
-func (c *testControl) AuthorizePeer(ctx context.Context, credential protocolv1.Credential, sourceEpoch int64, peerID string) (PeerRoute, error) {
+func (c *testControl) AuthorizePeer(ctx context.Context, credential protocolv1.Credential, sourceEpoch int64, peerNetworkID, peerID string) (PeerRoute, error) {
 	if c.authorizeHook != nil {
-		return c.authorizeHook(ctx, credential, sourceEpoch, peerID)
+		return c.authorizeHook(ctx, credential, sourceEpoch, peerNetworkID, peerID)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	lease, ok := c.sessions[peerID]
+	lease, ok := c.sessions[peerNetworkID+"/"+peerID]
 	if !ok {
 		return PeerRoute{}, errors.New("peer is unavailable")
 	}
@@ -72,7 +72,7 @@ func (c *testControl) AuthorizePeer(ctx context.Context, credential protocolv1.C
 
 type testMesh struct{}
 
-func (*testMesh) Forward(context.Context, PeerRoute, string, string, string, []byte) error {
+func (*testMesh) Forward(context.Context, PeerRoute, string, string, string, string, []byte) error {
 	return nil
 }
 
@@ -145,7 +145,7 @@ func TestRelayRequiresExplicitVersionAndForwardsOverTLS13(t *testing.T) {
 	peerA, _ := authenticateRelayForTest(t, server.Addr, roots, privateKey, "network", "node-a", 0)
 	defer peerA.Close()
 	payload := []byte("opaque relay payload")
-	if err := json.NewEncoder(peerA).Encode(protocolv1.ClientFrame{Type: protocolv1.MessageClientFrame, ProtocolVersion: protocolv1.Version, PeerID: "node-b", Payload: payload}); err != nil {
+	if err := json.NewEncoder(peerA).Encode(protocolv1.ClientFrame{Type: protocolv1.MessageClientFrame, ProtocolVersion: protocolv1.Version, PeerNetworkID: "network", PeerID: "node-b", Payload: payload}); err != nil {
 		t.Fatal(err)
 	}
 	var frame protocolv1.ServerFrame
@@ -156,9 +156,9 @@ func TestRelayRequiresExplicitVersionAndForwardsOverTLS13(t *testing.T) {
 		t.Fatalf("forwarded frame = %#v", frame)
 	}
 	control.mu.Lock()
-	epoch := control.sessions["node-b"].Epoch
+	epoch := control.sessions["network/node-b"].Epoch
 	control.mu.Unlock()
-	if err := server.DeliverRemote("network", "node-a", "node-b", epoch+1, payload); !errors.Is(err, ErrDestinationFenced) {
+	if err := server.DeliverRemote("network", "node-a", "network", "node-b", epoch+1, payload); !errors.Is(err, ErrDestinationFenced) {
 		t.Fatalf("fenced delivery error = %v", err)
 	}
 }
@@ -231,10 +231,10 @@ func TestControlUnavailableDuringPeerAuthorizationClosesSession(t *testing.T) {
 	peerA, readerA := authenticateRelayForTest(t, server.Addr, roots, privateKey, "network", "node-a", 0)
 	defer peerA.Close()
 
-	control.authorizeHook = func(context.Context, protocolv1.Credential, int64, string) (PeerRoute, error) {
+	control.authorizeHook = func(context.Context, protocolv1.Credential, int64, string, string) (PeerRoute, error) {
 		return PeerRoute{}, fmt.Errorf("%w: test outage", ErrControlUnavailable)
 	}
-	if err := json.NewEncoder(peerA).Encode(protocolv1.ClientFrame{Type: protocolv1.MessageClientFrame, ProtocolVersion: protocolv1.Version, PeerID: "node-b", Payload: []byte("fail-closed")}); err != nil {
+	if err := json.NewEncoder(peerA).Encode(protocolv1.ClientFrame{Type: protocolv1.MessageClientFrame, ProtocolVersion: protocolv1.Version, PeerNetworkID: "network", PeerID: "node-b", Payload: []byte("fail-closed")}); err != nil {
 		t.Fatal(err)
 	}
 	if err := peerA.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
@@ -263,17 +263,17 @@ func TestPeerDenialDoesNotCloseSession(t *testing.T) {
 	defer peerA.Close()
 
 	control.mu.Lock()
-	allowed := control.sessions["node-b"]
+	allowed := control.sessions["network/node-b"]
 	control.mu.Unlock()
 	var denied atomic.Bool
 	denied.Store(true)
-	control.authorizeHook = func(context.Context, protocolv1.Credential, int64, string) (PeerRoute, error) {
+	control.authorizeHook = func(context.Context, protocolv1.Credential, int64, string, string) (PeerRoute, error) {
 		if denied.Load() {
 			return PeerRoute{}, errors.New("peer denied")
 		}
 		return PeerRoute{RelayID: allowed.RelayID, BootID: allowed.BootID, Epoch: allowed.Epoch}, nil
 	}
-	if err := json.NewEncoder(peerA).Encode(protocolv1.ClientFrame{Type: protocolv1.MessageClientFrame, ProtocolVersion: protocolv1.Version, PeerID: "node-b", Payload: []byte("denied")}); err != nil {
+	if err := json.NewEncoder(peerA).Encode(protocolv1.ClientFrame{Type: protocolv1.MessageClientFrame, ProtocolVersion: protocolv1.Version, PeerNetworkID: "network", PeerID: "node-b", Payload: []byte("denied")}); err != nil {
 		t.Fatal(err)
 	}
 	var relayError protocolv1.Error
@@ -282,7 +282,7 @@ func TestPeerDenialDoesNotCloseSession(t *testing.T) {
 	}
 	denied.Store(false)
 	payload := []byte("allowed-after-denial")
-	if err := json.NewEncoder(peerA).Encode(protocolv1.ClientFrame{Type: protocolv1.MessageClientFrame, ProtocolVersion: protocolv1.Version, PeerID: "node-b", Payload: payload}); err != nil {
+	if err := json.NewEncoder(peerA).Encode(protocolv1.ClientFrame{Type: protocolv1.MessageClientFrame, ProtocolVersion: protocolv1.Version, PeerNetworkID: "network", PeerID: "node-b", Payload: payload}); err != nil {
 		t.Fatal(err)
 	}
 	var frame protocolv1.ServerFrame

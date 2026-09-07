@@ -115,8 +115,8 @@ func main() {
 		fatal(err)
 	}
 	var server *relay.Server
-	meshManager := mesh.NewManager(ctx, *relayID, *bootID, meshClientTLS, func(networkID, fromNodeID, toNodeID string, destinationEpoch int64, payload []byte) error {
-		return server.DeliverRemote(networkID, fromNodeID, toNodeID, destinationEpoch, payload)
+	meshManager := mesh.NewManager(ctx, *relayID, *bootID, meshClientTLS, func(networkID, fromNodeID, destinationNetworkID, toNodeID string, destinationEpoch int64, payload []byte) error {
+		return server.DeliverRemote(networkID, fromNodeID, destinationNetworkID, toNodeID, destinationEpoch, payload)
 	})
 	meshManager.IdentityPolicy = policy
 	defer meshManager.Close()
