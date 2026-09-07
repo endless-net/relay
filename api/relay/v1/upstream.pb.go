@@ -102,9 +102,11 @@ func (*AuthorizeCredentialResponse) Descriptor() ([]byte, []int) {
 }
 
 type AuthorizePeerPairRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Credential    *Credential            `protobuf:"bytes,1,opt,name=credential,proto3" json:"credential,omitempty"`
-	PeerId        string                 `protobuf:"bytes,2,opt,name=peer_id,json=peerId,proto3" json:"peer_id,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Credential *Credential            `protobuf:"bytes,1,opt,name=credential,proto3" json:"credential,omitempty"`
+	PeerId     string                 `protobuf:"bytes,2,opt,name=peer_id,json=peerId,proto3" json:"peer_id,omitempty"`
+	// Required, including when the destination is in the source network.
+	PeerNetworkId string `protobuf:"bytes,3,opt,name=peer_network_id,json=peerNetworkId,proto3" json:"peer_network_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -149,6 +151,13 @@ func (x *AuthorizePeerPairRequest) GetCredential() *Credential {
 func (x *AuthorizePeerPairRequest) GetPeerId() string {
 	if x != nil {
 		return x.PeerId
+	}
+	return ""
+}
+
+func (x *AuthorizePeerPairRequest) GetPeerNetworkId() string {
+	if x != nil {
+		return x.PeerNetworkId
 	}
 	return ""
 }
@@ -278,12 +287,13 @@ const file_api_relay_v1_upstream_proto_rawDesc = "" +
 	"\n" +
 	"credential\x18\x01 \x01(\v2\x1f.endlessnet.relay.v1.CredentialR\n" +
 	"credential\"\x1d\n" +
-	"\x1bAuthorizeCredentialResponse\"t\n" +
+	"\x1bAuthorizeCredentialResponse\"\x9c\x01\n" +
 	"\x18AuthorizePeerPairRequest\x12?\n" +
 	"\n" +
 	"credential\x18\x01 \x01(\v2\x1f.endlessnet.relay.v1.CredentialR\n" +
 	"credential\x12\x17\n" +
-	"\apeer_id\x18\x02 \x01(\tR\x06peerId\"\x1b\n" +
+	"\apeer_id\x18\x02 \x01(\tR\x06peerId\x12&\n" +
+	"\x0fpeer_network_id\x18\x03 \x01(\tR\rpeerNetworkId\"\x1b\n" +
 	"\x19AuthorizePeerPairResponse\"\x17\n" +
 	"\x15GetTrustBundleRequest\"o\n" +
 	"\x16GetTrustBundleResponse\x12U\n" +

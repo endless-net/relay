@@ -11,7 +11,8 @@ option go_package = "github.com/endless-net/relay/api/relay/v1;relayv1";
 service RelayUpstreamService {
   // OK authorizes the credential; PermissionDenied or Unauthenticated denies it.
   rpc AuthorizeCredential(AuthorizeCredentialRequest) returns (AuthorizeCredentialResponse);
-  // Authorization is directional: source credential -> peer_id in the same network.
+  // Authorization is directional: source credential -> peer_network_id/peer_id.
+  // Cross-network pairs require an explicit current upstream permission.
   rpc AuthorizePeerPair(AuthorizePeerPairRequest) returns (AuthorizePeerPairResponse);
   rpc GetTrustBundle(GetTrustBundleRequest) returns (GetTrustBundleResponse);
 }
@@ -25,6 +26,8 @@ message AuthorizeCredentialResponse {}
 message AuthorizePeerPairRequest {
   Credential credential = 1;
   string peer_id = 2;
+  // Required, including when the destination is in the source network.
+  string peer_network_id = 3;
 }
 
 message AuthorizePeerPairResponse {}

@@ -106,6 +106,8 @@ message AuthorizePeerRequest {
   Credential credential = 3;
   string peer_id = 4;
   int64 source_epoch = 5;
+  // Required destination network; never inferred from the source credential.
+  string peer_network_id = 6;
 }
 
 message AuthorizePeerResponse {
@@ -137,6 +139,8 @@ message MeshFrame {
   string to_node_id = 5;
   int64 destination_epoch = 6;
   bytes payload = 7;
+  // network_id identifies the source; this field identifies the destination.
+  string destination_network_id = 8;
 }
 
 message MeshPing {}

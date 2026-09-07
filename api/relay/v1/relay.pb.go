@@ -870,12 +870,14 @@ func (*ReleaseSessionResponse) Descriptor() ([]byte, []int) {
 }
 
 type AuthorizePeerRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RelayId       string                 `protobuf:"bytes,1,opt,name=relay_id,json=relayId,proto3" json:"relay_id,omitempty"`
-	BootId        string                 `protobuf:"bytes,2,opt,name=boot_id,json=bootId,proto3" json:"boot_id,omitempty"`
-	Credential    *Credential            `protobuf:"bytes,3,opt,name=credential,proto3" json:"credential,omitempty"`
-	PeerId        string                 `protobuf:"bytes,4,opt,name=peer_id,json=peerId,proto3" json:"peer_id,omitempty"`
-	SourceEpoch   int64                  `protobuf:"varint,5,opt,name=source_epoch,json=sourceEpoch,proto3" json:"source_epoch,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	RelayId     string                 `protobuf:"bytes,1,opt,name=relay_id,json=relayId,proto3" json:"relay_id,omitempty"`
+	BootId      string                 `protobuf:"bytes,2,opt,name=boot_id,json=bootId,proto3" json:"boot_id,omitempty"`
+	Credential  *Credential            `protobuf:"bytes,3,opt,name=credential,proto3" json:"credential,omitempty"`
+	PeerId      string                 `protobuf:"bytes,4,opt,name=peer_id,json=peerId,proto3" json:"peer_id,omitempty"`
+	SourceEpoch int64                  `protobuf:"varint,5,opt,name=source_epoch,json=sourceEpoch,proto3" json:"source_epoch,omitempty"`
+	// Required destination network; never inferred from the source credential.
+	PeerNetworkId string `protobuf:"bytes,6,opt,name=peer_network_id,json=peerNetworkId,proto3" json:"peer_network_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -943,6 +945,13 @@ func (x *AuthorizePeerRequest) GetSourceEpoch() int64 {
 		return x.SourceEpoch
 	}
 	return 0
+}
+
+func (x *AuthorizePeerRequest) GetPeerNetworkId() string {
+	if x != nil {
+		return x.PeerNetworkId
+	}
+	return ""
 }
 
 type AuthorizePeerResponse struct {
@@ -1188,8 +1197,10 @@ type MeshFrame struct {
 	ToNodeId         string                 `protobuf:"bytes,5,opt,name=to_node_id,json=toNodeId,proto3" json:"to_node_id,omitempty"`
 	DestinationEpoch int64                  `protobuf:"varint,6,opt,name=destination_epoch,json=destinationEpoch,proto3" json:"destination_epoch,omitempty"`
 	Payload          []byte                 `protobuf:"bytes,7,opt,name=payload,proto3" json:"payload,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// network_id identifies the source; this field identifies the destination.
+	DestinationNetworkId string `protobuf:"bytes,8,opt,name=destination_network_id,json=destinationNetworkId,proto3" json:"destination_network_id,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *MeshFrame) Reset() {
@@ -1269,6 +1280,13 @@ func (x *MeshFrame) GetPayload() []byte {
 		return x.Payload
 	}
 	return nil
+}
+
+func (x *MeshFrame) GetDestinationNetworkId() string {
+	if x != nil {
+		return x.DestinationNetworkId
+	}
+	return ""
 }
 
 type MeshPing struct {
@@ -1413,7 +1431,7 @@ const file_api_relay_v1_relay_proto_rawDesc = "" +
 	"network_id\x18\x03 \x01(\tR\tnetworkId\x12\x17\n" +
 	"\anode_id\x18\x04 \x01(\tR\x06nodeId\x12\x14\n" +
 	"\x05epoch\x18\x05 \x01(\x03R\x05epoch\"\x18\n" +
-	"\x16ReleaseSessionResponse\"\xc7\x01\n" +
+	"\x16ReleaseSessionResponse\"\xef\x01\n" +
 	"\x14AuthorizePeerRequest\x12\x19\n" +
 	"\brelay_id\x18\x01 \x01(\tR\arelayId\x12\x17\n" +
 	"\aboot_id\x18\x02 \x01(\tR\x06bootId\x12?\n" +
@@ -1421,7 +1439,8 @@ const file_api_relay_v1_relay_proto_rawDesc = "" +
 	"credential\x18\x03 \x01(\v2\x1f.endlessnet.relay.v1.CredentialR\n" +
 	"credential\x12\x17\n" +
 	"\apeer_id\x18\x04 \x01(\tR\x06peerId\x12!\n" +
-	"\fsource_epoch\x18\x05 \x01(\x03R\vsourceEpoch\"\xa6\x01\n" +
+	"\fsource_epoch\x18\x05 \x01(\x03R\vsourceEpoch\x12&\n" +
+	"\x0fpeer_network_id\x18\x06 \x01(\tR\rpeerNetworkId\"\xa6\x01\n" +
 	"\x15AuthorizePeerResponse\x120\n" +
 	"\x14destination_relay_id\x18\x01 \x01(\tR\x12destinationRelayId\x12.\n" +
 	"\x13destination_boot_id\x18\x02 \x01(\tR\x11destinationBootId\x12+\n" +
@@ -1435,7 +1454,7 @@ const file_api_relay_v1_relay_proto_rawDesc = "" +
 	"\x04body\"?\n" +
 	"\tMeshHello\x12\x19\n" +
 	"\brelay_id\x18\x01 \x01(\tR\arelayId\x12\x17\n" +
-	"\aboot_id\x18\x02 \x01(\tR\x06bootId\"\xe5\x01\n" +
+	"\aboot_id\x18\x02 \x01(\tR\x06bootId\"\x9b\x02\n" +
 	"\tMeshFrame\x12\x19\n" +
 	"\brelay_id\x18\x01 \x01(\tR\arelayId\x12\x17\n" +
 	"\aboot_id\x18\x02 \x01(\tR\x06bootId\x12\x1d\n" +
@@ -1446,7 +1465,8 @@ const file_api_relay_v1_relay_proto_rawDesc = "" +
 	"\n" +
 	"to_node_id\x18\x05 \x01(\tR\btoNodeId\x12+\n" +
 	"\x11destination_epoch\x18\x06 \x01(\x03R\x10destinationEpoch\x12\x18\n" +
-	"\apayload\x18\a \x01(\fR\apayload\"\n" +
+	"\apayload\x18\a \x01(\fR\apayload\x124\n" +
+	"\x16destination_network_id\x18\b \x01(\tR\x14destinationNetworkId\"\n" +
 	"\n" +
 	"\bMeshPing\"\n" +
 	"\n" +
