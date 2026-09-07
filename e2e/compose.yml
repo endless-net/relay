@@ -20,11 +20,14 @@ services:
       - --tls-key-file=/fixtures/upstream.key
       - --service-ca-file=/fixtures/service-ca.crt
       - --config-file=/fixtures/mock-config.json
+      - --trust-domain=${E2E_TRUST_DOMAIN:-endlessnet.ru}
+      - --workload-api-addr=unix:///workload/agent.sock
     volumes:
       - type: bind
         source: "${E2E_INTERNAL_FIXTURES_DIR:?fixtures directory is required}"
         target: /fixtures
         read_only: true
+      - socket-upstream:/workload:ro
     ports:
       - target: 9447
         published: "0"
@@ -39,7 +42,9 @@ services:
       - --postgres-dsn=postgres://relay:relay-e2e-password@postgres:5432/relay?sslmode=disable
       - --coordinator-url=https://upstream:9447
       - --endpoints-file=/fixtures/endpoints.json
-      - --service-tls-provider=development_file
+      - --service-tls-provider=spiffe
+      - --trust-domain=${E2E_TRUST_DOMAIN:-endlessnet.ru}
+      - --workload-api-addr=unix:///workload/agent.sock
       - --service-ca-file=/fixtures/service-ca.crt
       - --service-cert-file=/fixtures/relay-coordinator.crt
       - --service-key-file=/fixtures/relay-coordinator.key
@@ -49,6 +54,7 @@ services:
         source: "${E2E_INTERNAL_FIXTURES_DIR:?fixtures directory is required}"
         target: /fixtures
         read_only: true
+      - socket-relay-coordinator:/workload:ro
     ports:
       - target: 9445
         published: "0"
@@ -73,7 +79,9 @@ services:
       - --mesh-addr=relay-a:9444
       - --mesh-listen-addr=:9444
       - --relay-coordinator-addr=relay-coordinator:9445
-      - --service-tls-provider=development_file
+      - --service-tls-provider=spiffe
+      - --trust-domain=${E2E_TRUST_DOMAIN:-endlessnet.ru}
+      - --workload-api-addr=unix:///workload/agent.sock
       - --tls-cert-file=/fixtures/relay-a-public.crt
       - --tls-key-file=/fixtures/relay-a-public.key
       - --service-ca-file=/fixtures/service-ca.crt
@@ -85,6 +93,7 @@ services:
         source: "${E2E_INTERNAL_FIXTURES_DIR:?fixtures directory is required}"
         target: /fixtures
         read_only: true
+      - socket-relay-a:/workload:ro
     ports: &relay-ports
       - target: 9443
         published: "0"
@@ -110,14 +119,21 @@ services:
       - --mesh-addr=relay-b:9444
       - --mesh-listen-addr=:9444
       - --relay-coordinator-addr=relay-coordinator:9445
-      - --service-tls-provider=development_file
+      - --service-tls-provider=spiffe
+      - --trust-domain=${E2E_TRUST_DOMAIN:-endlessnet.ru}
+      - --workload-api-addr=unix:///workload/agent.sock
       - --tls-cert-file=/fixtures/relay-b-public.crt
       - --tls-key-file=/fixtures/relay-b-public.key
       - --service-ca-file=/fixtures/service-ca.crt
       - --service-cert-file=/fixtures/relay-b.crt
       - --service-key-file=/fixtures/relay-b.key
       - --relay-coordinator-server-name=relay-coordinator
-    volumes: *relay-volumes
+    volumes:
+      - type: bind
+        source: "${E2E_INTERNAL_FIXTURES_DIR:?fixtures directory is required}"
+        target: /fixtures
+        read_only: true
+      - socket-relay-b:/workload:ro
     ports: *relay-ports
     depends_on: *relay-dependencies
     networks: [relay-e2e]
@@ -132,18 +148,90 @@ services:
       - --mesh-addr=relay-c:9444
       - --mesh-listen-addr=:9444
       - --relay-coordinator-addr=relay-coordinator:9445
-      - --service-tls-provider=development_file
+      - --service-tls-provider=spiffe
+      - --trust-domain=${E2E_TRUST_DOMAIN:-endlessnet.ru}
+      - --workload-api-addr=unix:///workload/agent.sock
       - --tls-cert-file=/fixtures/relay-c-public.crt
       - --tls-key-file=/fixtures/relay-c-public.key
       - --service-ca-file=/fixtures/service-ca.crt
       - --service-cert-file=/fixtures/relay-c.crt
       - --service-key-file=/fixtures/relay-c.key
       - --relay-coordinator-server-name=relay-coordinator
-    volumes: *relay-volumes
+    volumes:
+      - type: bind
+        source: "${E2E_INTERNAL_FIXTURES_DIR:?fixtures directory is required}"
+        target: /fixtures
+        read_only: true
+      - socket-relay-c:/workload:ro
     ports: *relay-ports
     depends_on: *relay-dependencies
+    networks: [relay-e2e]
+
+  spire-server:
+    image: ghcr.io/spiffe/spire-server:1.15.3@sha256:4082f30d3e0ddc4000a171392c4ea174345ee44d161ee917c70b97b2ecfba141
+    command: ["-config", "/fixtures/spire-server.conf"]
+    user: "0:0"
+    volumes:
+      - "${E2E_INTERNAL_FIXTURES_DIR}:/fixtures:ro"
+    networks: [relay-e2e]
+
+  agent-upstream:
+    image: ghcr.io/spiffe/spire-agent:1.15.3@sha256:41b0dcd8b258a69db9e2768292a060766fb76fd866e4bc925849981ea1b825ff
+    command: ["-config", "/fixtures/agent-upstream.conf"]
+    user: "0:0"
+    pid: host
+    volumes:
+      - "${E2E_INTERNAL_FIXTURES_DIR}:/fixtures:ro"
+      - socket-upstream:/workload
+    networks: [relay-e2e]
+
+  agent-relay-coordinator:
+    image: ghcr.io/spiffe/spire-agent:1.15.3@sha256:41b0dcd8b258a69db9e2768292a060766fb76fd866e4bc925849981ea1b825ff
+    command: ["-config", "/fixtures/agent-relay-coordinator.conf"]
+    user: "0:0"
+    pid: host
+    volumes:
+      - "${E2E_INTERNAL_FIXTURES_DIR}:/fixtures:ro"
+      - socket-relay-coordinator:/workload
+    networks: [relay-e2e]
+
+  agent-relay-a:
+    image: ghcr.io/spiffe/spire-agent:1.15.3@sha256:41b0dcd8b258a69db9e2768292a060766fb76fd866e4bc925849981ea1b825ff
+    command: ["-config", "/fixtures/agent-relay-a.conf"]
+    user: "0:0"
+    pid: host
+    volumes:
+      - "${E2E_INTERNAL_FIXTURES_DIR}:/fixtures:ro"
+      - socket-relay-a:/workload
+    networks: [relay-e2e]
+
+  agent-relay-b:
+    image: ghcr.io/spiffe/spire-agent:1.15.3@sha256:41b0dcd8b258a69db9e2768292a060766fb76fd866e4bc925849981ea1b825ff
+    command: ["-config", "/fixtures/agent-relay-b.conf"]
+    user: "0:0"
+    pid: host
+    volumes:
+      - "${E2E_INTERNAL_FIXTURES_DIR}:/fixtures:ro"
+      - socket-relay-b:/workload
+    networks: [relay-e2e]
+
+  agent-relay-c:
+    image: ghcr.io/spiffe/spire-agent:1.15.3@sha256:41b0dcd8b258a69db9e2768292a060766fb76fd866e4bc925849981ea1b825ff
+    command: ["-config", "/fixtures/agent-relay-c.conf"]
+    user: "0:0"
+    pid: host
+    volumes:
+      - "${E2E_INTERNAL_FIXTURES_DIR}:/fixtures:ro"
+      - socket-relay-c:/workload
     networks: [relay-e2e]
 
 networks:
   relay-e2e:
     internal: false
+
+volumes:
+  socket-upstream: {}
+  socket-relay-coordinator: {}
+  socket-relay-a: {}
+  socket-relay-b: {}
+  socket-relay-c: {}

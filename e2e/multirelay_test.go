@@ -266,7 +266,7 @@ func testSecurityContracts(t *testing.T, clients map[string]*relayClient) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	coordinatorTLS := &tls.Config{Certificates: []tls.Certificate{suite.certificates["relay-a"]}, RootCAs: suite.serviceRoots, ServerName: "relay-coordinator", MinVersion: tls.VersionTLS13}
+	coordinatorTLS := suite.internalClientTLS(suite.certificates["relay-a"], "relay-coordinator")
 	grpcConnection, err := grpc.NewClient(coordinatorAddress, grpc.WithTransportCredentials(credentials.NewTLS(coordinatorTLS)))
 	if err != nil {
 		t.Fatal(err)
@@ -283,7 +283,7 @@ func testSecurityContracts(t *testing.T, clients map[string]*relayClient) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	meshTLS := &tls.Config{Certificates: []tls.Certificate{suite.certificates["relay-a"]}, RootCAs: suite.serviceRoots, ServerName: "relay-b", MinVersion: tls.VersionTLS13}
+	meshTLS := suite.internalClientTLS(suite.certificates["relay-a"], "relay-b")
 	meshConnection, err := grpc.NewClient(meshAddress, grpc.WithTransportCredentials(credentials.NewTLS(meshTLS)))
 	if err != nil {
 		t.Fatal(err)

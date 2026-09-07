@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -15,8 +16,10 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/endless-net/relay/internal/tlsconfig"
 	protocolv1 "github.com/endless-net/relay/protocol/v1"
 )
 
@@ -44,6 +47,10 @@ type authorizationRequest struct {
 }
 
 type server struct {
+	mu     sync.RWMutex
+	policy tlsconfig.IdentityPolicy
+	mode   string
+	delay  time.Duration
 	config config
 	nodes  map[string]struct{}
 	pairs  map[string]struct{}
@@ -55,19 +62,35 @@ func main() {
 	keyFile := flag.String("tls-key-file", "", "server private key")
 	caFile := flag.String("service-ca-file", "", "service CA bundle")
 	configFile := flag.String("config-file", "", "strict mock configuration")
+	workloadAPI := flag.String("workload-api-addr", "", "ephemeral SPIRE Workload API")
+	domain := flag.String("trust-domain", tlsconfig.DefaultTrustDomain, "test trust domain")
 	flag.Parse()
+	policy, err := tlsconfig.NewIdentityPolicy(*domain, "", "")
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	cfg, err := loadConfig(*configFile)
 	if err != nil {
 		log.Fatal(err)
 	}
-	tlsConfig, err := mutualTLS(*certFile, *keyFile, *caFile)
+	_ = certFile
+	_ = keyFile
+	_ = caFile
+	runtime, err := tlsconfig.NewWorkloadRuntime(context.Background(), *workloadAPI, policy.UpstreamID)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer runtime.Close()
+	tlsConfig, err := runtime.ServerTLSConfig()
 	if err != nil {
 		log.Fatal(err)
 	}
 	s := newServer(cfg)
+	s.policy = policy
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.health)
+	mux.HandleFunc("/test/control", s.control)
 	mux.HandleFunc("/internal/coordinator/relay-control/v1/trust-bundle", s.trustBundle)
 	mux.HandleFunc("/internal/coordinator/relay-control/v1/authorize", s.authorize)
 	httpServer := &http.Server{
@@ -151,6 +174,11 @@ func (s *server) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) trustBundle(w http.ResponseWriter, r *http.Request) {
+	if !s.before(w, r) {
+		return
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	if r.Method != http.MethodGet || !s.authorizedService(r) {
 		http.Error(w, "service authentication required", http.StatusUnauthorized)
 		return
@@ -162,6 +190,11 @@ func (s *server) trustBundle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) authorize(w http.ResponseWriter, r *http.Request) {
+	if !s.before(w, r) {
+		return
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	if r.Method != http.MethodPost || !s.authorizedService(r) {
 		http.Error(w, "service authentication required", http.StatusUnauthorized)
 		return
@@ -214,11 +247,72 @@ func (s *server) authorizeRequest(request authorizationRequest) bool {
 }
 
 func (s *server) authorizedService(r *http.Request) bool {
-	if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 || len(r.TLS.VerifiedChains[0]) == 0 {
+	if r.TLS == nil {
 		return false
 	}
-	leaf := r.TLS.VerifiedChains[0][0]
-	return len(leaf.URIs) == 1 && leaf.URIs[0] != nil && leaf.URIs[0].String() == coordinatorURI
+	id, err := tlsconfig.PeerID(*r.TLS)
+	return err == nil && id.String() == s.policy.CoordinatorID
+}
+func (s *server) before(w http.ResponseWriter, r *http.Request) bool {
+	s.mu.RLock()
+	mode, delay := s.mode, s.delay
+	s.mu.RUnlock()
+	if delay > 0 {
+		select {
+		case <-time.After(delay):
+		case <-r.Context().Done():
+			return false
+		}
+	}
+	switch mode {
+	case "unavailable":
+		http.Error(w, "test outage", 503)
+		return false
+	case "deny":
+		http.Error(w, "test denial", 403)
+		return false
+	case "hang":
+		<-r.Context().Done()
+		return false
+	case "invalid":
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"unexpected":true}`)
+		return false
+	}
+	return true
+}
+func (s *server) control(w http.ResponseWriter, r *http.Request) {
+	if r.TLS == nil {
+		http.Error(w, "forbidden", 403)
+		return
+	}
+	id, err := tlsconfig.PeerID(*r.TLS)
+	if err != nil || id.String() != s.policy.UpstreamID || r.Method != http.MethodPut {
+		http.Error(w, "forbidden", 403)
+		return
+	}
+	var input struct {
+		Mode    string  `json:"mode"`
+		DelayMS int     `json:"delay_ms"`
+		Config  *config `json:"config,omitempty"`
+	}
+	decoder := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
+		http.Error(w, "invalid", 400)
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.mode = input.Mode
+	s.delay = time.Duration(input.DelayMS) * time.Millisecond
+	if input.Config != nil {
+		replacement := newServer(*input.Config)
+		s.config = replacement.config
+		s.nodes = replacement.nodes
+		s.pairs = replacement.pairs
+	}
+	w.WriteHeader(204)
 }
 
 func pairKey(from, to string) string {

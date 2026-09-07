@@ -15,5 +15,5 @@
 - Migrations must not add `DEFAULT`, explicit `NOT NULL`, or PostgreSQL foreign keys.
 - Run `gofmt -w .`, `go vet ./...`, `go test -race ./...`, and `go build ./cmd/...` before handoff.
 - GitHub Actions runner-unit infrastructure (installation, registration, systemd policy, inventory, recovery, and rollout) is owned by `endless-net/observability`; keep only the minimal `runs-on` selectors in this repository.
-- SPIRE Server/Agent operations and workload-entry reconciliation are owned by `endless-net/observability` through guarded direct SSH. Keep Relay SPIFFE IDs and systemd workload requirements here, but never operate or inspect SPIRE from Actions or deployment playbooks.
+- SPIRE Server/Agent operations and workload-entry reconciliation are owned by `endless-net/observability` through guarded direct SSH. Keep Relay SPIFFE IDs and systemd workload requirements here, but never operate or inspect production SPIRE from Actions or deployment playbooks. Autonomous product E2E may create and destroy isolated ephemeral SPIRE servers, agents and workload entries on GitHub-hosted runners without production access.
 - Production changes use the guarded release/deploy workflows.

@@ -15,7 +15,11 @@ permissions:
   attestations: write
 
 jobs:
+  product-e2e:
+    uses: ./.github/workflows/product-e2e.yml
+
   release:
+    needs: product-e2e
     runs-on: ubuntu-latest
     timeout-minutes: 40
     outputs:
