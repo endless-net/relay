@@ -75,7 +75,7 @@ jobs:
       matrix:
         include:
           - group: protocol-auth
-            test: TestProductProtocol|TestProductTrustRotation|TestProductAuthorizationControl|TestProductUpstreamContract
+            test: TestProductProtocol|TestProductTrustRotation|TestProductAuthorizationControl|TestProductUpstreamContract|TestProductCrossNetworkRouting
             domain: endlessnet.ru
           - group: spiffe-mesh
             test: TestMultiRelayInfrastructure|TestProductSPIFFE|TestProductSPIREOutage|TestProductMeshFencing
