@@ -554,6 +554,11 @@ func (h *harness) generateFixtures() error {
 		return err
 	}
 	h.certificates["e2e-client"] = e2eCertificate
+	wrongDomain, err := h.issueAndWrite(serviceCA, serviceKey, "wrong-domain", nil, "spiffe://wrong.example/relay/relay-a", []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth})
+	if err != nil {
+		return err
+	}
+	h.certificates["wrong-domain"] = wrongDomain
 
 	publicSigningKey, privateSigningKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
