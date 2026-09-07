@@ -124,3 +124,9 @@ func relayContext(t *testing.T, relayID string) context.Context {
 	info := credentials.TLSInfo{State: tls.ConnectionState{PeerCertificates: []*x509.Certificate{certificate}}}
 	return peer.NewContext(context.Background(), &peer.Peer{AuthInfo: info})
 }
+
+func TestControlRejectsRelayIdentityOutsideSharedPolicy(t *testing.T) {
+	if _, err := relayIDFromPeer(relayContext(t, "nested/relay")); err == nil {
+		t.Fatal("control accepted identity rejected by mesh policy")
+	}
+}
