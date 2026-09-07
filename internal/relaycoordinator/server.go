@@ -13,7 +13,6 @@ import (
 	"github.com/endless-net/relay/internal/store"
 	"github.com/endless-net/relay/internal/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
-	"github.com/spiffe/go-spiffe/v2/spiffetls"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
@@ -211,7 +210,7 @@ func relayIDFromPeerWithPolicy(ctx context.Context, policy tlsconfig.IdentityPol
 	if !ok {
 		return "", errors.New("verified relay certificate is required")
 	}
-	peerID, err := spiffetls.PeerIDFromConnectionState(tlsInfo.State)
+	peerID, err := tlsconfig.PeerID(tlsInfo.State)
 	if err != nil {
 		return "", errors.New("verified relay certificate is required")
 	}
@@ -220,7 +219,12 @@ func relayIDFromPeerWithPolicy(ctx context.Context, policy tlsconfig.IdentityPol
 	if !strings.HasPrefix(raw, prefix) || !canonicalRequired(strings.TrimPrefix(raw, prefix)) {
 		return "", errors.New("relay certificate URI SAN is invalid")
 	}
-	return strings.TrimPrefix(raw, prefix), nil
+	relayID := strings.TrimPrefix(raw, prefix)
+	expected, err := policy.RelayIdentity(relayID)
+	if err != nil || peerID != expected {
+		return "", errors.New("relay certificate URI SAN is invalid")
+	}
+	return relayID, nil
 }
 
 func protoInstances(instances []store.Instance) []*relayv1.RelayInstance {
@@ -253,7 +257,7 @@ func isExactHTTPPeer(request *http.Request, expected string) bool {
 	if request == nil || request.TLS == nil {
 		return false
 	}
-	peerID, err := spiffetls.PeerIDFromConnectionState(*request.TLS)
+	peerID, err := tlsconfig.PeerID(*request.TLS)
 	if err != nil {
 		return false
 	}
