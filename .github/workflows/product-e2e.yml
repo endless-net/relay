@@ -1,0 +1,141 @@
+name: Product E2E
+
+on:
+  workflow_call:
+    inputs:
+      extended:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Build the product once
+        run: |
+          set -euo pipefail
+          docker build -t relay:e2e -f Dockerfile.relay .
+          docker build -t relay-coordinator:e2e -f Dockerfile.coordinator .
+          docker build -t relay-upstream:e2e -f e2e/Dockerfile.mock .
+          mkdir -p "$RUNNER_TEMP/product-images"
+          docker save relay:e2e relay-coordinator:e2e relay-upstream:e2e | gzip > "$RUNNER_TEMP/product-images/images.tar.gz"
+          git rev-parse HEAD > "$RUNNER_TEMP/product-images/source-sha.txt"
+          docker image inspect relay:e2e relay-coordinator:e2e relay-upstream:e2e --format '{{.Id}}' > "$RUNNER_TEMP/product-images/image-ids.txt"
+          cd "$RUNNER_TEMP/product-images"
+          sha256sum images.tar.gz > checksums.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: product-images
+          path: ${{ runner.temp }}/product-images
+          retention-days: 7
+
+  scenarios:
+    needs: images
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: protocol-auth
+            test: TestProductProtocol
+            domain: endlessnet.ru
+          - group: spiffe-mesh
+            test: TestMultiRelayInfrastructure|TestProductSPIFFE
+            domain: endlessnet.ru
+          - group: custom-domain
+            test: TestMultiRelayInfrastructure|TestProductSPIFFE
+            domain: operator.example
+          - group: fencing-recovery
+            test: TestProductFencing
+            domain: endlessnet.ru
+          - group: resources-lifecycle
+            test: TestProductResources
+            domain: endlessnet.ru
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: product-images
+          path: ${{ runner.temp }}/product-images
+      - name: Run isolated product scenarios
+        env:
+          E2E_RELAY_IMAGE: relay:e2e
+          E2E_COORDINATOR_IMAGE: relay-coordinator:e2e
+          E2E_UPSTREAM_IMAGE: relay-upstream:e2e
+          E2E_TRUST_DOMAIN: ${{ matrix.domain }}
+          E2E_ARTIFACT_DIR: ${{ runner.temp }}/product-results
+          E2E_TEST: ${{ matrix.test }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/product-images"
+          sha256sum -c checksums.txt
+          test "$(cat source-sha.txt)" = "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
+          gzip -dc images.tar.gz | docker load
+          cd "$GITHUB_WORKSPACE"
+          docker compose version
+          mkdir -p "$E2E_ARTIFACT_DIR"
+          cp "$RUNNER_TEMP/product-images/"*.txt "$E2E_ARTIFACT_DIR/"
+          go test -tags=e2e -json -count=1 -timeout=15m -run "$E2E_TEST" ./e2e/... | tee "$E2E_ARTIFACT_DIR/tests.jsonl"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: product-${{ matrix.group }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/product-results
+          retention-days: 7
+          if-no-files-found: error
+      - name: Clean abandoned containers
+        if: always()
+        run: docker ps -aq --filter label=com.docker.compose.project | xargs -r docker rm -f
+
+  extended:
+    if: inputs.extended
+    needs: [images, scenarios]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: product-images
+          path: ${{ runner.temp }}/product-images
+      - name: Soak the same product images for 30 minutes
+        env:
+          E2E_RELAY_IMAGE: relay:e2e
+          E2E_COORDINATOR_IMAGE: relay-coordinator:e2e
+          E2E_UPSTREAM_IMAGE: relay-upstream:e2e
+          E2E_EXTENDED: "1"
+          E2E_ARTIFACT_DIR: ${{ runner.temp }}/product-results
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/product-images"
+          sha256sum -c checksums.txt
+          test "$(cat source-sha.txt)" = "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
+          gzip -dc images.tar.gz | docker load
+          cd "$GITHUB_WORKSPACE"
+          mkdir -p "$E2E_ARTIFACT_DIR"
+          cp "$RUNNER_TEMP/product-images/"*.txt "$E2E_ARTIFACT_DIR/"
+          go test -tags=e2e -json -count=1 -timeout=40m -run TestProductExtended ./e2e/... | tee "$E2E_ARTIFACT_DIR/tests.jsonl"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: product-extended-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/product-results
+          retention-days: 7
+          if-no-files-found: error
+      - name: Clean abandoned containers
+        if: always()
+        run: docker ps -aq --filter label=com.docker.compose.project | xargs -r docker rm -f

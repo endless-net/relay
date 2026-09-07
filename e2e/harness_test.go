@@ -31,6 +31,9 @@ import (
 	"time"
 
 	protocolv1 "github.com/endless-net/relay/protocol/v1"
+	"github.com/spiffe/go-spiffe/v2/bundle/x509bundle"
+	"github.com/spiffe/go-spiffe/v2/spiffeid"
+	spiffetls "github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 )
 
 const (
@@ -77,9 +80,7 @@ func TestMain(m *testing.M) {
 		h.captureDiagnostics()
 	} else {
 		code = m.Run()
-		if code != 0 {
-			h.captureDiagnostics()
-		}
+		h.captureDiagnostics()
 	}
 	if h.keep {
 		fmt.Fprintf(os.Stderr, "E2E_KEEP enabled; compose project %s and fixtures %s are preserved\n", h.project, h.fixturesDir)
@@ -183,9 +184,12 @@ func resolveComposeCommand() (string, []string, error) {
 }
 
 func (h *harness) start() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
 	if err := h.prepareImages(ctx); err != nil {
+		return err
+	}
+	if err := h.startSPIRE(ctx); err != nil {
 		return err
 	}
 	if _, err := h.compose(ctx, "up", "-d", "postgres", "upstream"); err != nil {
@@ -242,6 +246,10 @@ func (h *harness) prepareImages(ctx context.Context) error {
 			return err
 		}
 		h.builtImages = append(h.builtImages, h.coordinatorImage)
+	}
+	h.mockImage = strings.TrimSpace(os.Getenv("E2E_UPSTREAM_IMAGE"))
+	if h.mockImage != "" {
+		return nil
 	}
 	h.mockImage = h.project + "-mock:local"
 	_, err := h.docker(ctx, "build", "--tag", h.mockImage, "--file", "e2e/Dockerfile.mock", ".")
@@ -440,27 +448,40 @@ func (h *harness) postgresQuery(ctx context.Context, query string) (string, erro
 	return h.compose(ctx, "exec", "-T", "postgres", "psql", "-U", "relay", "-d", "relay", "-Atc", query)
 }
 
-func (h *harness) mutualHTTPClient(certificate tls.Certificate, serverName string) *http.Client {
-	return &http.Client{
-		Timeout: 3 * time.Second,
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{
-			Certificates: []tls.Certificate{certificate},
-			RootCAs:      h.serviceRoots,
-			ServerName:   serverName,
-			MinVersion:   tls.VersionTLS13,
-		}},
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+func (h *harness) internalClientTLS(certificate tls.Certificate, serverName string) *tls.Config {
+	path := "/relay/" + serverName
+	if serverName == "relay-coordinator" {
+		path = "/service/relay-coordinator"
 	}
+	if serverName == "upstream" {
+		path = "/service/coordinator"
+	}
+	roots, err := os.ReadFile(filepath.Join(h.fixturesDir, "service-ca.crt"))
+	if err != nil {
+		panic(err)
+	}
+	td := spiffeid.RequireTrustDomainFromString(h.trustDomain())
+	bundle, err := x509bundle.Parse(td, roots)
+	if err != nil {
+		panic(err)
+	}
+	cfg := spiffetls.TLSClientConfig(bundle, spiffetls.AuthorizeID(spiffeid.RequireFromString("spiffe://"+h.trustDomain()+path)))
+	cfg.Certificates = []tls.Certificate{certificate}
+	cfg.MinVersion = tls.VersionTLS13
+	return cfg
+}
+func (h *harness) mutualHTTPClient(certificate tls.Certificate, serverName string) *http.Client {
+	return &http.Client{Timeout: 2 * time.Second, Transport: &http.Transport{TLSClientConfig: h.internalClientTLS(certificate, serverName)}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
 
 func (h *harness) captureDiagnostics() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if output, err := h.compose(ctx, "ps", "--all"); err == nil {
-		_ = os.WriteFile(filepath.Join(h.artifactsDir, "compose-ps.txt"), []byte(output), 0o644)
+		_ = os.WriteFile(filepath.Join(h.artifactsDir, "compose-ps.txt"), []byte(redactedDiagnostic(output)), 0o644)
 	}
 	if output, err := h.compose(ctx, "logs", "--no-color", "--timestamps"); err == nil {
-		_ = os.WriteFile(filepath.Join(h.artifactsDir, "compose.log"), []byte(output), 0o644)
+		_ = os.WriteFile(filepath.Join(h.artifactsDir, "compose.log"), []byte(redactedDiagnostic(output)), 0o644)
 	}
 	for _, relayID := range []string{"relay-a", "relay-b", "relay-c"} {
 		address, err := h.port(ctx, relayID, 9090)
@@ -497,28 +518,38 @@ func (h *harness) generateFixtures() error {
 	h.publicRoots.AddCert(publicCA)
 	h.serviceRoots = x509.NewCertPool()
 	h.serviceRoots.AddCert(serviceCA)
+	keyRaw, err := x509.MarshalECPrivateKey(serviceKey)
+	if err != nil {
+		return err
+	}
+	if err = writePEM(filepath.Join(h.fixturesDir, "service-ca.key"), "EC PRIVATE KEY", keyRaw); err != nil {
+		return err
+	}
+	if err = h.writeSPIREConfig(); err != nil {
+		return err
+	}
 
 	for _, relayID := range []string{"relay-a", "relay-b", "relay-c"} {
 		if _, err := h.issueAndWrite(publicCA, publicKey, relayID+"-public", []string{relayID, "localhost"}, "", []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}); err != nil {
 			return err
 		}
-		certificate, err := h.issueAndWrite(serviceCA, serviceKey, relayID, []string{relayID, "localhost"}, "spiffe://endlessnet.ru/relay/"+relayID, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth})
+		certificate, err := h.issueAndWrite(serviceCA, serviceKey, relayID, []string{relayID, "localhost"}, "spiffe://"+h.trustDomain()+"/relay/"+relayID, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth})
 		if err != nil {
 			return err
 		}
 		h.certificates[relayID] = certificate
 	}
-	coordinatorCertificate, err := h.issueAndWrite(serviceCA, serviceKey, "relay-coordinator", []string{"relay-coordinator", "localhost"}, "spiffe://endlessnet.ru/service/relay-coordinator", []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth})
+	coordinatorCertificate, err := h.issueAndWrite(serviceCA, serviceKey, "relay-coordinator", []string{"relay-coordinator", "localhost"}, "spiffe://"+h.trustDomain()+"/service/relay-coordinator", []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth})
 	if err != nil {
 		return err
 	}
 	h.certificates["relay-coordinator"] = coordinatorCertificate
-	upstreamCertificate, err := h.issueAndWrite(serviceCA, serviceKey, "upstream", []string{"upstream", "localhost"}, "spiffe://endlessnet.ru/service/coordinator", []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth})
+	upstreamCertificate, err := h.issueAndWrite(serviceCA, serviceKey, "upstream", []string{"upstream", "localhost"}, "spiffe://"+h.trustDomain()+"/service/coordinator", []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth})
 	if err != nil {
 		return err
 	}
 	h.certificates["upstream"] = upstreamCertificate
-	e2eCertificate, err := h.issueAndWrite(serviceCA, serviceKey, "e2e-client", []string{"e2e-client"}, "spiffe://endlessnet.ru/service/coordinator", []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth})
+	e2eCertificate, err := h.issueAndWrite(serviceCA, serviceKey, "e2e-client", []string{"e2e-client"}, "spiffe://"+h.trustDomain()+"/service/coordinator", []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth})
 	if err != nil {
 		return err
 	}
