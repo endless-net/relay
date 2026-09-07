@@ -163,8 +163,8 @@ sequenceDiagram
   `epoch`;
 - renewal разрешён только точному текущему владельцу;
 - mesh-доставка разрешена только при совпадении `destination_epoch`;
-- `ReleaseSession` удаляет запись только при полном совпадении владельца и не
-  может удалить более новую сессию.
+- `ReleaseSession` деактивирует запись при полном совпадении владельца,
+  сохраняя последний epoch; более новую сессию старый release не изменяет.
 
 Так устраняется split-brain на уровне сессии без распределённой блокировки в
 самих Relay.
@@ -245,7 +245,8 @@ Relay Coordinator загружает при старте строгий JSON с�
 Версия должна быть положительной и не может двигаться назад относительно
 сохранённого snapshot. Дублирующиеся ID и неполные endpoint запрещены.
 Snapshot доступен по `GET /internal/relay-control/v1/endpoints` только workload
-с точной identity `spiffe://endlessnet.ru/service/coordinator`; token-only
+с точной настроенной upstream identity (default
+`spiffe://endlessnet.ru/service/coordinator`); token-only
 запросы отклоняются.
 
 ## 7. Данные
@@ -265,6 +266,10 @@ Snapshot доступен по `GET /internal/relay-control/v1/endpoints` тол
 ## 8. Безопасность
 
 ### 8.1. Каналы и workload identity
+
+Ниже указаны defaults EndlessNet. Оператор задаёт собственный trust domain
+и service identities согласно [контракту](upstream-contract.md). Это не добавляет
+альтернативные identities в allowlist; политика заменяется целиком.
 
 - публичный Relay всегда использует TLS 1.3;
 - Relay → Relay Coordinator использует mTLS; клиентский сертификат обязан

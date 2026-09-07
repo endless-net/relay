@@ -26,6 +26,10 @@ drops.
 
 ### F-03. Уточнить readiness, drain и post-deploy проверки
 
+Уточнение 7 сентября: Relay уже проверяет listener, instance lease и пригодный
+trust в `/readyz`; shutdown ограничен 5 секундами. Оставшаяся часть пункта —
+наблюдаемость и операционная приёмка, принадлежащая инфраструктуре оператора.
+
 **Проблема.** Текущий Relay `/healthz` не отражает control lease или mesh, а
 Relay Coordinator `/readyz` проверяет только чтение endpoint snapshot. При
 deploy Coordinator проверяется systemd state, но не полный mTLS control flow.
