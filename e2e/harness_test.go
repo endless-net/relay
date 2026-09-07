@@ -192,7 +192,7 @@ func (h *harness) start() error {
 	if err := h.startSPIRE(ctx); err != nil {
 		return err
 	}
-	if _, err := h.compose(ctx, "up", "-d", "postgres", "upstream"); err != nil {
+	if _, err := h.compose(ctx, "up", "-d", "postgres", "upstream", "fault-proxy"); err != nil {
 		return err
 	}
 	if err := h.waitFor(ctx, "PostgreSQL readiness", func() error {
