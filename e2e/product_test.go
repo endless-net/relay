@@ -505,6 +505,7 @@ func TestProductExtended(t *testing.T) {
 		a := dialRelayClientEventually(t, "relay-a", "node-a", 15*time.Second)
 		b := dialRelayClientEventually(t, "relay-b", "node-b", 15*time.Second)
 		waitForTransfer(t, a, b, 20*time.Second)
+		waitForTransfer(t, b, a, 20*time.Second)
 		assertTransfer(t, b, a, []byte("soak"))
 		a.close()
 		b.close()
@@ -646,22 +647,34 @@ func proxyMode(t *testing.T, target, mode string) {
 
 func TestProductSPIREOutage(t *testing.T) {
 	a, b := productClients(t, false)
-	before := metricValue(t, "relay-a", "endlessnet_relay_heartbeats_total")
+	query := "SELECT lease_expires_at::text FROM relay_instances WHERE relay_id='relay-a'"
+	before, err := suite.postgresQuery(context.Background(), query)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := suite.compose(context.Background(), "pause", "spire-server"); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _, _ = suite.compose(context.Background(), "unpause", "spire-server") })
 	deadline := time.Now().Add(12 * time.Second)
-	for metricValue(t, "relay-a", "endlessnet_relay_heartbeats_total") <= before {
+	for {
 		assertTransfer(t, a, b, []byte("cached-svid-during-spire-loss"))
+		after, err := suite.postgresQuery(context.Background(), query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if after != before {
+			break
+		}
 		if !time.Now().Before(deadline) {
-			t.Fatal("relay stopped heartbeat during SPIRE loss")
+			t.Fatal("instance stopped renewing during SPIRE loss")
 		}
 		waitPoll(deadline)
 	}
 	if _, err := suite.compose(context.Background(), "unpause", "spire-server"); err != nil {
 		t.Fatal(err)
 	}
+	waitForTransfer(t, b, a, 20*time.Second)
 	assertTransfer(t, b, a, []byte("spire-recovered"))
 }
 
