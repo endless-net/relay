@@ -20,7 +20,7 @@ require the harness's exact mTLS identity.
 | protocol/auth | TLS 1.3, plaintext/TLS 1.2 rejection, unsupported version/field, malformed and oversized input, maximum payload, local delivery and isolation | `TestProductProtocol` |
 | protocol/auth | Signature, expired credential, unknown key, inactive node, different network, denied directed pair; fresh/negative/stale cache, timeout and recovery | `TestProductProtocol`, `TestProductAuthorizationControl` |
 | protocol/auth | Signing-key overlap, new credential, retirement, recovery | `TestProductTrustRotation` |
-| trust-bootstrap | Invalid/unavailable trust prevents startup; recovery after trust returns | `TestProductNoTrustBootstrap` |
+| trust-bootstrap | Invalid/unavailable trust prevents startup; recovery after trust returns; plaintext upstream configuration rejected before startup | `TestProductNoTrustBootstrap` |
 | SPIFFE/mesh | All six directed relay pairs, bidirectional payload integrity, migration, peer failure and reconnect, short Coordinator restart | `TestMultiRelayInfrastructure` |
 | SPIFFE/mesh | Real Workload API, custom-verifier identity with empty VerifiedChains, SVID renewal, temporary SPIRE outage | `TestProductSPIFFE`, `TestProductSPIREOutage` |
 | SPIFFE/mesh | Wrong identity/domain, stale boot, delayed frame from old epoch, idle stream closure after boot changes | `TestProductMeshFencing` |
@@ -65,28 +65,29 @@ Compose projects; network faults are commanded through a bounded-buffer proxy.
 
 Acceptance recorded on 2026-09-07:
 
-- [Regular CI: all seven groups, storage and protected verify](https://github.com/endless-net/relay/actions/runs/34119731480): PR head `9e7660fafece0ec448914be3f71ca697000f1c7a`, built/tested merge checkout `a594685d4d2b3a3800f0a8638ed98dda5ef45fbd`; 43 leaf E2E scenarios passed.
-- [Extended and regular CI](https://github.com/endless-net/relay/actions/runs/34117312163): source `a7d9b733dc515bf262f8bd8f9ec9b34d72ed3a98`; extended passed in **1801.94 seconds**, completing **351 recovery cycles**. Subsequent changes only affect tests, fixtures, CI and documentation; production sources and build inputs are unchanged.
+- [Final server CI and extended](https://github.com/endless-net/relay/actions/runs/34121728292): source `3c3b7ad68d3785d49bf58204ffcd8aaf1f48db7e`; all seven regular groups passed, with **44 leaf E2E scenarios**. This includes rejection of plaintext upstream configuration before storage/listeners start.
+- The same run contains the 30-minute extended recovery job and publishes its conclusion, duration and completed-cycle events. The dated [architecture evidence](https://github.com/endless-net/architecture/blob/main/docs/ru/evidence/2026-09-07-relay-independent-product.md) records the final outcome. The subsequent smoke-utility identity configuration and documentation changes do not change server package sources/dependencies or Dockerfiles; the tested source SHA and image IDs are recorded explicitly.
+- Earlier acceptance remains available: [initial regular CI](https://github.com/endless-net/relay/actions/runs/34119731480) (43 leaf scenarios) and [initial extended](https://github.com/endless-net/relay/actions/runs/34117312163) (1801.94 seconds, 351 recovery cycles). Those runs preceded the additional HTTPS-origin startup guard.
 
 | Regular group | Leaf scenarios | Go package elapsed, seconds |
 | --- | ---: | ---: |
-| protocol/auth | 10 | 85.614 |
-| SPIFFE/mesh | 9 | 57.130 |
-| custom domain | 9 | 76.064 |
-| fencing/recovery | 3 | 72.779 |
-| resources/lifecycle | 8 | 55.080 |
-| snapshot | 2 | 20.387 |
-| trust bootstrap | 2 | 52.646 |
+| protocol/auth | 10 | 80.390 |
+| SPIFFE/mesh | 9 | 81.338 |
+| custom domain | 9 | 80.218 |
+| fencing/recovery | 3 | 63.143 |
+| resources/lifecycle | 8 | 56.980 |
+| snapshot | 2 | 17.573 |
+| trust bootstrap | 3 | 51.934 |
 
 The following are Docker image configuration IDs, not published release tags.
-The archive checksum binds the complete set of locally loaded images.
+Regular and extended jobs use the same image archive; its checksum binds the complete set of loaded images.
 
-| Input | Regular CI SHA-256 | Extended CI SHA-256 |
-| --- | --- | --- |
-| Relay image ID | `63fad9d056fc940d874404826d023c5ebe2f0f5fbf2487ae55c258a3a99c5baf` | `ded14ed131b4f6a7283111941b9a20844532a90002f3b9cf60220c1ea6864b3f` |
-| Relay Coordinator image ID | `e8f71fcb6444c005ae2db75b4e8255fbee894392589c63f2093d40debf01927c` | `5e724eb776559f2adb27a6b86e64bf3f18a467518fd3f451979b7109691a1429` |
-| Upstream/proxy image ID | `ad4b2e784953db9cde51903f909215cb5efa04ab034e80c990d6f0728169ae73` | `57d9388132d5554643683109d492e043414b4d45766f4facb5177a6c73199f88` |
-| Image archive | `dbb8a63faab4c40d004e76542daa87c36099adebb5c98e42c37db3f4d685501e` | `1a5cd635c062278dda469d95f34ec0e3e7d0ac14361917226e659fc6567ba8f2` |
+| Input | Final server CI SHA-256 |
+| --- | --- |
+| Relay image ID | `db8fd18595441f7da559447f3f2455a2d5653ddf98e5642ef8b969513c3e608d` |
+| Relay Coordinator image ID | `d35c0c33a115ae04cf402b05da9f1edbac2ca41f98e5fb625626da0b3773b153` |
+| Upstream/proxy image ID | `02d782245e73b89df58074ab0a260dd340144f0f96081045ea50bd99c4e7f6d8` |
+| Image archive | `95d97fab2f14cac69041fb374f9f78fc706d81a450a542d6b062ead8200de159` |
 
 Initial failures remain in Actions history, including
 [setup/conformance](https://github.com/endless-net/relay/actions/runs/34114320117),
