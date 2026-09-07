@@ -111,15 +111,42 @@ func TestMultiRelayInfrastructure(t *testing.T) {
 		}
 		clients["node-d"] = nodeD
 		waitForTransfer(t, clients["node-a"], nodeD, 20*time.Second)
+		restored := false
+		t.Cleanup(func() {
+			if !restored {
+				if err := suite.recreateRelay("relay-b", "boot-b-cleanup"); err != nil {
+					t.Errorf("restore stopped Relay: %v", err)
+				}
+			}
+		})
 		if err := suite.stopService("relay-b"); err != nil {
 			t.Fatal(err)
 		}
 		waitForClientClose(t, nodeD, 5*time.Second)
 		assertTransfer(t, clients["node-a"], clients["node-c"], []byte("remaining-relays-still-route"))
-		assertEventuallyRejected(t, clients["node-a"], "node-d", []byte("offline-relay-payload"), "relay peer is not allowed", 12*time.Second)
+		// Release during process exit is best effort. A live 15-second lease
+		// can outlast the former 12-second assertion window. Observe fencing
+		// authority first, then require the public path to reject the route.
+		leaseCtx, cancelLeaseWait := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancelLeaseWait()
+		err = suite.waitFor(leaseCtx, "offline node session to become unroutable", func() error {
+			value, err := suite.postgresQuery(leaseCtx, "SELECT NOT EXISTS (SELECT 1 FROM node_session_leases s JOIN relay_instances i ON i.relay_id=s.relay_id AND i.boot_id=s.boot_id WHERE s.network_id='e2e-network' AND s.node_id='node-d' AND s.lease_expires_at>clock_timestamp() AND i.lease_expires_at>clock_timestamp())")
+			if err != nil {
+				return err
+			}
+			if strings.TrimSpace(value) != "t" {
+				return errors.New("destination still has valid session and instance leases")
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertEventuallyRejected(t, clients["node-a"], "node-d", []byte("offline-relay-payload"), "relay peer is not allowed", 5*time.Second)
 		if err := suite.recreateRelay("relay-b", "boot-b-2"); err != nil {
 			t.Fatal(err)
 		}
+		restored = true
 		reconnected, err := suite.dialRelayClient("relay-b", "node-d")
 		if err != nil {
 			t.Fatalf("reconnect node-d to relay-b: %v", err)
