@@ -5,9 +5,12 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -65,6 +68,47 @@ func TestProductProtocol(t *testing.T) {
 		testSecurityContracts(t, map[string]*relayClient{"node-a": a, "node-b": b})
 		assertTransfer(t, a, b, bytes.Repeat([]byte{0x83}, protocolv1.MaxFramePayloadBytes))
 		assertTransfer(t, b, a, []byte("reverse-local"))
+	})
+	t.Run("credential_rejections", func(t *testing.T) {
+		for _, kind := range []string{"signature", "expired", "unknown_key", "inactive", "network"} {
+			t.Run(kind, func(t *testing.T) {
+				expected := "invalid relay credential"
+				assertRawHelloRejected(t, "relay-a", "node-a", func(m map[string]any) {
+					credential := m["credential"].(*protocolv1.Credential)
+					switch kind {
+					case "signature":
+						credential.Signature = strings.Repeat("A", len(credential.Signature))
+					case "expired":
+						credential.ExpiresAt = time.Now().Add(-time.Second)
+					case "unknown_key":
+						_, key, err := ed25519.GenerateKey(rand.Reader)
+						if err != nil {
+							t.Fatal(err)
+						}
+						c, err := protocolv1.Sign(key, testNetworkID, "node-a", time.Now().Add(time.Minute))
+						if err != nil {
+							t.Fatal(err)
+						}
+						m["credential"] = c
+					case "inactive", "network":
+						network, node := testNetworkID, "inactive-node"
+						if kind == "network" {
+							network, node = "other-network", "node-a"
+						}
+						c, err := protocolv1.Sign(suite.signingKey, network, node, time.Now().Add(time.Minute))
+						if err != nil {
+							t.Fatal(err)
+						}
+						m["credential"] = c
+					}
+				}, func() string {
+					if kind == "inactive" || kind == "network" {
+						return "relay coordinator rejected session"
+					}
+					return expected
+				}())
+			})
+		}
 	})
 	t.Run("upstream_stale_window_and_recovery", func(t *testing.T) {
 		a, b := productClients(t, false)
@@ -192,17 +236,45 @@ func TestProductFencing(t *testing.T) {
 }
 
 func TestProductResources(t *testing.T) {
-	t.Run("local_and_remote_backpressure", func(t *testing.T) {
-		for _, local := range []bool{true, false} {
-			a, b := productClients(t, local)
-			// A large burst exercises bounded socket/queue pressure without retaining payloads.
-			for i := 0; i < 32; i++ {
-				assertTransfer(t, a, b, bytes.Repeat([]byte{byte(i)}, protocolv1.MaxFramePayloadBytes))
+	for _, local := range []bool{true, false} {
+		t.Run(fmt.Sprintf("slow_consumer_local_%v", local), func(t *testing.T) {
+			target := "relay-b"
+			if local {
+				target = "relay-a"
 			}
-			a.close()
-			b.close()
-		}
-	})
+			a := dialRelayClientEventually(t, "relay-a", "node-a", 15*time.Second)
+			defer a.close()
+			b, err := suite.dialRelayClientReading(target, "node-b", false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer b.close()
+			if tcp, ok := b.conn.NetConn().(*net.TCPConn); ok {
+				if err := tcp.SetReadBuffer(1024); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before := metricValue(t, target, "endlessnet_relay_slow_consumers_total")
+			deadline := time.Now().Add(20 * time.Second)
+			payload := bytes.Repeat([]byte{0x81}, protocolv1.MaxFramePayloadBytes)
+			for time.Now().Before(deadline) {
+				for i := 0; i < 32; i++ {
+					if err := a.send("node-b", payload); err != nil {
+						t.Fatal(err)
+					}
+					drainEvents(a)
+				}
+				if metricValue(t, target, "endlessnet_relay_slow_consumers_total") > before {
+					b.close()
+					recovered := dialRelayClientEventually(t, target, "node-b", 15*time.Second)
+					defer recovered.close()
+					waitForTransfer(t, a, recovered, 20*time.Second)
+					return
+				}
+			}
+			t.Fatal("stalled destination was not closed and counted")
+		})
+	}
 	t.Run("bounded_sigterm", func(t *testing.T) {
 		a, b := productClients(t, false)
 		start := time.Now()
@@ -247,4 +319,20 @@ func TestProductExtended(t *testing.T) {
 		}
 		t.Logf("completed recovery cycle %d", cycle)
 	}
+}
+
+func metricValue(t *testing.T, relayID, name string) float64 {
+	t.Helper()
+	for _, line := range strings.Split(fetchMetrics(t, relayID), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[0] == name {
+			v, err := strconv.ParseFloat(fields[1], 64)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return v
+		}
+	}
+	t.Fatalf("missing metric %s", name)
+	return 0
 }

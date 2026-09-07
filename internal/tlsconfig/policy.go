@@ -22,7 +22,7 @@ func NewIdentityPolicy(domain, coordinator, upstream string) (IdentityPolicy, er
 		domain = DefaultTrustDomain
 	}
 	td, err := spiffeid.TrustDomainFromString(domain)
-	if err != nil || domain != strings.TrimSpace(domain) {
+	if err != nil || domain != strings.TrimSpace(domain) || td.Name() != domain {
 		return IdentityPolicy{}, errors.New("invalid trust domain")
 	}
 	if coordinator == "" {

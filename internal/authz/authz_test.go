@@ -93,3 +93,33 @@ func TestHTTPAuthorizerRequiresExactNoContentSuccess(t *testing.T) {
 		})
 	}
 }
+
+func TestCacheRechecksDeadlineAfterUpstream(t *testing.T) {
+	for _, expiry := range []bool{false, true} {
+		now := time.Now()
+		cache := NewCache(&stubAuthorizer{})
+		cache.Now = func() time.Time { return now }
+		expires := now.Add(time.Hour)
+		if expiry {
+			expires = now.Add(10 * time.Second)
+		}
+		if err := cache.cached("key", expires, func() error { return nil }); err != nil {
+			t.Fatal(err)
+		}
+		now = now.Add(6 * time.Second)
+		err := cache.cached("key", expires, func() error { now = now.Add(31 * time.Second); return errors.New("delayed outage") })
+		if err == nil {
+			t.Fatalf("delayed response extended deadline, expiry case %v", expiry)
+		}
+	}
+}
+func TestSuccessfulUpstreamCannotAuthorizeExpiredCredential(t *testing.T) {
+	now := time.Now()
+	cache := NewCache(&stubAuthorizer{})
+	cache.Now = func() time.Time { return now }
+	expires := now.Add(time.Second)
+	err := cache.cached("key", expires, func() error { now = expires; return nil })
+	if !errors.Is(err, ErrDenied) {
+		t.Fatalf("expiry after success: %v", err)
+	}
+}
