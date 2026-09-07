@@ -86,8 +86,11 @@ jobs:
           - group: trust-bootstrap
             test: TestProductNoTrustBootstrap
             domain: endlessnet.ru
+          - group: snapshot
+            test: TestProductSnapshotIdentity|TestProductSnapshotPersistence
+            domain: endlessnet.ru
           - group: fencing-recovery
-            test: TestProductSnapshotIdentity|TestProductFencing
+            test: TestProductFencing
             domain: endlessnet.ru
           - group: resources-lifecycle
             test: TestProductResources
