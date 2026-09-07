@@ -5,21 +5,27 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
+	relayv1 "github.com/endless-net/relay/api/relay/v1"
 	"github.com/endless-net/relay/internal/tlsconfig"
 	protocolv1 "github.com/endless-net/relay/protocol/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -38,13 +44,8 @@ type peerPair struct {
 	To   string `json:"to"`
 }
 
-type authorizationRequest struct {
-	Action     string                `json:"action"`
-	Credential protocolv1.Credential `json:"credential"`
-	PeerID     string                `json:"peer_id,omitempty"`
-}
-
 type server struct {
+	relayv1.UnimplementedRelayUpstreamServiceServer
 	mu     sync.RWMutex
 	policy tlsconfig.IdentityPolicy
 	mode   string
@@ -83,20 +84,27 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.health)
 	mux.HandleFunc("/test/control", s.control)
-	mux.HandleFunc("/internal/coordinator/relay-control/v1/trust-bundle", s.trustBundle)
-	mux.HandleFunc("/internal/coordinator/relay-control/v1/authorize", s.authorize)
+	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(relayv1.RejectUnknownUnaryServerInterceptor), grpc.MaxRecvMsgSize(maxBodyBytes), grpc.MaxSendMsgSize(maxBodyBytes))
+	relayv1.RegisterRelayUpstreamServiceServer(grpcServer, s)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.ProtoMajor == 2 && strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
+			grpcServer.ServeHTTP(w, r)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
 	httpServer := &http.Server{
 		Addr:              *addr,
-		Handler:           mux,
+		Handler:           handler,
 		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	listener, err := tls.Listen("tcp", *addr, tlsConfig)
+	listener, err := net.Listen("tcp", *addr)
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("mock coordinator listening on %s", *addr)
-	if err := httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := httpServer.ServeTLS(listener, "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
 }
@@ -144,77 +152,102 @@ func (s *server) health(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.WriteString(w, "{\"status\":\"ok\"}\n")
 }
 
-func (s *server) trustBundle(w http.ResponseWriter, r *http.Request) {
-	if !s.before(w, r) {
-		return
+func (s *server) GetTrustBundle(ctx context.Context, request *relayv1.GetTrustBundleRequest) (*relayv1.GetTrustBundleResponse, error) {
+	if err := s.beforeRPC(ctx); err != nil {
+		return nil, err
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if r.Method != http.MethodGet || !s.authorizedService(r) {
-		http.Error(w, "service authentication required", http.StatusUnauthorized)
-		return
+	bundle := relayv1.TrustBundleFromProtocol(s.config.TrustBundle)
+	if s.mode == "invalid" {
+		bundle.Version = 99
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(struct {
-		RelayTrustBundle protocolv1.SigningTrustBundle `json:"relay_trust_bundle"`
-	}{RelayTrustBundle: s.config.TrustBundle})
+	return &relayv1.GetTrustBundleResponse{RelayTrustBundle: bundle}, nil
 }
 
-func (s *server) authorize(w http.ResponseWriter, r *http.Request) {
-	if !s.before(w, r) {
-		return
+func (s *server) AuthorizeCredential(ctx context.Context, request *relayv1.AuthorizeCredentialRequest) (*relayv1.AuthorizeCredentialResponse, error) {
+	if err := s.beforeRPC(ctx); err != nil {
+		return nil, err
+	}
+	credential, err := relayv1.CredentialToProtocol(request.GetCredential())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid credential")
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if r.Method != http.MethodPost || !s.authorizedService(r) {
-		http.Error(w, "service authentication required", http.StatusUnauthorized)
-		return
+	if !s.authorizeCredential(credential) {
+		return nil, status.Error(codes.PermissionDenied, "credential denied")
 	}
-	defer r.Body.Close()
-	decoder := json.NewDecoder(io.LimitReader(r.Body, maxBodyBytes))
-	decoder.DisallowUnknownFields()
-	var request authorizationRequest
-	if err := decoder.Decode(&request); err != nil {
-		http.Error(w, "invalid authorization request", http.StatusBadRequest)
-		return
-	}
-	if err := requireEOF(decoder); err != nil {
-		http.Error(w, "invalid authorization request", http.StatusBadRequest)
-		return
-	}
-	if !s.authorizeRequest(request) {
-		http.Error(w, "relay authorization denied", http.StatusForbidden)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	return &relayv1.AuthorizeCredentialResponse{}, nil
 }
 
-func (s *server) authorizeRequest(request authorizationRequest) bool {
-	credential := request.Credential
+func (s *server) AuthorizePeerPair(ctx context.Context, request *relayv1.AuthorizePeerPairRequest) (*relayv1.AuthorizePeerPairResponse, error) {
+	if err := s.beforeRPC(ctx); err != nil {
+		return nil, err
+	}
+	credential, err := relayv1.CredentialToProtocol(request.GetCredential())
+	if err != nil || request.GetPeerId() == "" || request.GetPeerId() != strings.TrimSpace(request.GetPeerId()) {
+		return nil, status.Error(codes.InvalidArgument, "invalid peer authorization")
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, activeTarget := s.nodes[request.GetPeerId()]
+	_, allowedPair := s.pairs[pairKey(credential.NodeID, request.GetPeerId())]
+	if !s.authorizeCredential(credential) || !activeTarget || !allowedPair {
+		return nil, status.Error(codes.PermissionDenied, "peer pair denied")
+	}
+	return &relayv1.AuthorizePeerPairResponse{}, nil
+}
+
+// Called under s.mu; signature, expiry and domain policy remain independent of
+// the Relay Coordinator's client adapter and authorization cache.
+func (s *server) authorizeCredential(credential protocolv1.Credential) bool {
 	if credential.NetworkID != s.config.NetworkID {
 		return false
 	}
 	if _, ok := s.nodes[credential.NodeID]; !ok {
 		return false
 	}
-	key, err := s.config.TrustBundle.Resolve(credential.KeyID, time.Now().UTC())
-	if err != nil || protocolv1.Verify(credential, key.PublicKey, time.Now().UTC()) != nil {
-		return false
+	now := time.Now().UTC()
+	key, err := s.config.TrustBundle.Resolve(credential.KeyID, now)
+	return err == nil && protocolv1.Verify(credential, key.PublicKey, now) == nil
+}
+
+func (s *server) beforeRPC(ctx context.Context) error {
+	remote, ok := peer.FromContext(ctx)
+	if !ok {
+		return status.Error(codes.Unauthenticated, "workload identity required")
 	}
-	switch request.Action {
-	case "credential":
-		if strings.TrimSpace(request.PeerID) != "" {
-			return false
-		}
-		return true
-	case "peer":
-		if _, ok := s.pairs[pairKey(credential.NodeID, request.PeerID)]; !ok {
-			return false
-		}
-		return true
-	default:
-		return false
+	tlsInfo, ok := remote.AuthInfo.(credentials.TLSInfo)
+	if !ok {
+		return status.Error(codes.Unauthenticated, "TLS required")
 	}
+	id, err := tlsconfig.PeerID(tlsInfo.State)
+	if err != nil || id.String() != s.policy.CoordinatorID {
+		return status.Error(codes.PermissionDenied, "caller identity denied")
+	}
+	s.mu.RLock()
+	mode, delay := s.mode, s.delay
+	s.mu.RUnlock()
+	if delay > 0 {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			return status.FromContextError(ctx.Err()).Err()
+		}
+	}
+	switch mode {
+	case "unavailable":
+		return status.Error(codes.Unavailable, "test outage")
+	case "deny":
+		return status.Error(codes.PermissionDenied, "test denial")
+	case "hang":
+		<-ctx.Done()
+		return status.FromContextError(ctx.Err()).Err()
+	}
+	return nil
 }
 
 func (s *server) authorizedService(r *http.Request) bool {
@@ -223,34 +256,6 @@ func (s *server) authorizedService(r *http.Request) bool {
 	}
 	id, err := tlsconfig.PeerID(*r.TLS)
 	return err == nil && id.String() == s.policy.CoordinatorID
-}
-func (s *server) before(w http.ResponseWriter, r *http.Request) bool {
-	s.mu.RLock()
-	mode, delay := s.mode, s.delay
-	s.mu.RUnlock()
-	if delay > 0 {
-		select {
-		case <-time.After(delay):
-		case <-r.Context().Done():
-			return false
-		}
-	}
-	switch mode {
-	case "unavailable":
-		http.Error(w, "test outage", 503)
-		return false
-	case "deny":
-		http.Error(w, "test denial", 403)
-		return false
-	case "hang":
-		<-r.Context().Done()
-		return false
-	case "invalid":
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"unexpected":true}`)
-		return false
-	}
-	return true
 }
 func (s *server) control(w http.ResponseWriter, r *http.Request) {
 	if r.TLS == nil {

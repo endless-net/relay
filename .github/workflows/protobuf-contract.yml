@@ -51,7 +51,7 @@ jobs:
 
           baseline="$(find contracts/proto-baseline -type f -name '*.binpb' -print -quit)"
           if [ -n "$baseline" ]; then
-            if ! buf breaking api --against "$baseline" 2>&1 | tee -a "$report"; then
+            if ! buf breaking --against "$baseline" 2>&1 | tee -a "$report"; then
               result=FAIL
             fi
           else

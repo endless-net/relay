@@ -42,7 +42,7 @@ flowchart LR
       RB -->|"RelayControl gRPC, mTLS"| RC
       RC -->|"leases, registry, endpoints"| PG[("Product PostgreSQL")]
     end
-    RC -->|"AuthZ + trust, SPIFFE mTLS"| UP["Compatible upstream"]
+    RC -->|"RelayUpstreamService gRPC, SPIFFE mTLS"| UP["Compatible upstream"]
     UP -->|"Read endpoint snapshot, exact identity"| RC
     Product -->|"Immutable release"| Infra["Operator infrastructure"]
 ```
@@ -219,6 +219,12 @@ An invalid version, empty `oneof` or unknown protobuf field closes the RPC or
 stream. Server interceptors recursively validate requests; control and mesh
 clients validate every response in the same way.
 
+The operator implements `RelayUpstreamService` from
+[`upstream.proto`](../api/relay/v1/upstream.proto): `AuthorizeCredential`,
+`AuthorizePeerPair` and `GetTrustBundle`. It uses gRPC with exact SPIFFE mTLS
+identities and strict request/response validation; no upstream JSON fallback exists.
+See the [upstream contract](upstream-contract.md).
+
 ### 6.4. Endpoint snapshots
 
 Relay Coordinator loads strict JSON at startup:
@@ -382,7 +388,7 @@ Bandwidth and admission limits currently use flags only.
 Required configuration:
 
 - Dedicated PostgreSQL DSN.
-- Upstream HTTPS origin.
+- Upstream gRPC HTTPS origin.
 - Path to a versioned endpoint snapshot.
 - Local SPIRE Workload API.
 

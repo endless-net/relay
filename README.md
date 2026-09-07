@@ -5,7 +5,7 @@ active-active relay mesh used when peers cannot establish a direct path.
 
 Relay is a standalone public product. A compatible upstream owns networks,
 nodes, directed peer authorization and signing trust; Relay accesses it only
-through the [published upstream contract](docs/upstream-contract.md). Operators
+through the [published protobuf/gRPC upstream contract](docs/upstream-contract.md). Operators
 provide their own compatible upstream and trust infrastructure. Product builds
 and tests are autonomous.
 
