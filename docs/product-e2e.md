@@ -52,12 +52,29 @@ E2E_EXTENDED=1 go test -tags=e2e,extended -count=1 -timeout=40m -run TestProduct
 
 CI builds the images once and passes their archive, checksum, source SHA and
 image IDs to all matrix groups. Container dependencies are pinned by digest.
-The `verify` check succeeds only after static/unit checks and every
-product group succeed; branch protection remains enabled. The release workflow
-reuses the full CI workflow, including static/unit checks and product E2E, before
-publishing artifacts. Automatic checks run on pull requests and pushes to `main`; release publication
-runs on new `vMAJOR.MINOR.PATCH` tags. CI and DCO can also be dispatched manually
-on a branch for additional verification. The soak is compiled only with the additional `extended` build tag; ordinary
+The single entrypoint is `.github/workflows/ci.yml`. It runs unit tests, race
+tests, lint, protobuf validation, dependency scanning, release-gate contract
+tests, CodeQL and product E2E as separate jobs. The required `verify` check
+succeeds only after every quality job and product group succeeds; `signoff`
+remains a separate required check. Branch protection remains enabled.
+
+Automatic checks run on pull requests and pushes to `main`. A newer commit
+cancels obsolete checks for the same PR or main branch. Manual checks retain
+the optional extended soak. Product E2E remains a reusable internal workflow;
+its matrix and shared image artifacts are unchanged.
+
+A new `vMAJOR.MINOR.PATCH` tag runs only the release path in the same entrypoint.
+Before publishing, it requires merged-PR provenance and a completed successful
+main-push CI run for the exact tagged commit. The gate checks `verify`, image
+and storage jobs, and all seven regular E2E groups, including paginated jobs.
+PR, manual and tag runs do not qualify. The latest matching main run must
+succeed; an older successful run cannot conceal a newer failure. Release waits
+up to ten minutes for main CI to appear or finish, then fails closed. After
+fixing a transient CI failure and completing a successful rerun, rerun the
+failed release job without moving the tag. Tag releases are never cancelled
+by newer commits, and full E2E is not repeated during publication.
+
+The soak is compiled only with the additional `extended` build tag; ordinary
 E2E runs do not silently skip it. Each regular group has a 20-minute job deadline.
 The manual extended job allows 45 minutes including setup for a 30-minute soak.
 

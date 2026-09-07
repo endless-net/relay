@@ -2,25 +2,103 @@ name: CI
 
 on:
   pull_request:
-  workflow_call:
-    inputs:
-      extended:
-        type: boolean
-        default: false
+  push:
+    branches: [main]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
   workflow_dispatch:
     inputs:
       extended:
         type: boolean
         default: false
         description: Run the 30-minute product soak
-  push:
-    branches: [main]
 
 permissions:
   contents: read
 
+# New commits supersede checks for the same PR or main branch, never releases.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+
 jobs:
-  checks:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      checks: ${{ steps.mode.outputs.checks }}
+      release: ${{ steps.mode.outputs.release }}
+    steps:
+      - name: Select checks or release
+        id: mode
+        env:
+          IS_RELEASE: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
+        shell: bash
+        run: |
+          if [[ "$IS_RELEASE" == true ]]; then
+            echo 'checks=false' >> "$GITHUB_OUTPUT"
+            echo 'release=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'checks=true' >> "$GITHUB_OUTPUT"
+            echo 'release=false' >> "$GITHUB_OUTPUT"
+          fi
+
+  go-tests:
+    needs: plan
+    if: needs.plan.outputs.checks == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify modules
+        run: go mod verify
+      - name: Verify dependency licenses
+        run: ./scripts/check-licenses.sh
+      - name: Unit tests
+        run: go test ./...
+      - name: Build commands
+        run: go build ./cmd/...
+      - name: Verify generated state is clean
+        run: git diff --exit-code
+
+  race:
+    needs: plan
+    if: needs.plan.outputs.checks == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Race tests
+        run: go test -race ./...
+
+  lint:
+    needs: plan
+    if: needs.plan.outputs.checks == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Check Go formatting
+        run: test -z "$(gofmt -l .)"
+      - name: Vet
+        run: go vet ./...
+      - name: Lint scripts
+        run: docker run --rm -v "$PWD:/mnt" koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d scripts/*.sh
+
+  protobuf:
+    needs: plan
+    if: needs.plan.outputs.checks == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -41,37 +119,255 @@ jobs:
           buf build
           buf generate
           git diff --exit-code -- api/relay/v1
-      - name: Verify modules
-        run: go mod verify
-      - name: Verify dependency licenses
-        run: ./scripts/check-licenses.sh
-      - run: sh scripts/verify.sh
-      - name: Lint deployment scripts
-        run: docker run --rm -v "$PWD:/mnt" koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d scripts/*.sh
+      - name: Check released protobuf compatibility (advisory)
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline=
+          if [[ -d contracts/proto-baseline ]]; then
+            baseline=$(find contracts/proto-baseline -type f -name '*.binpb' -print -quit)
+          fi
+          if [[ -z "$baseline" ]]; then
+            echo 'SKIPPED: no released protobuf baseline exists yet.' | tee protobuf-contract-report.txt
+          else
+            buf breaking --against "$baseline" 2>&1 | tee protobuf-contract-report.txt
+          fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: protobuf-contract-report
+          path: protobuf-contract-report.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
+  dependency-scan:
+    needs: plan
+    if: needs.plan.outputs.checks == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
       - name: Vulnerability scan
         uses: golang/govulncheck-action@v1
         with:
           go-version-input: 1.27.0
           go-package: ./...
           cache: false
-      - name: Verify generated state is clean
-        run: git diff --exit-code
+
+  contracts:
+    needs: plan
+    if: needs.plan.outputs.checks == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Test release CI evidence requirements
+        run: bash scripts/test-ci-evidence.sh
 
   product-e2e:
+    needs: plan
+    if: needs.plan.outputs.checks == 'true'
     uses: ./.github/workflows/product-e2e.yml
     with:
       extended: ${{ inputs.extended == true }}
 
+  analyze:
+    needs: plan
+    if: needs.plan.outputs.checks == 'true'
+    name: Analyze (${{ matrix.language }})
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: go
+            build-mode: manual
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        if: matrix.language == 'go'
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+      - name: Build Go for analysis
+        if: matrix.language == 'go'
+        run: go build ./...
+      - uses: github/codeql-action/analyze@v4
+
   verify:
-    if: always()
-    needs: [checks, product-e2e]
+    if: always() && needs.plan.outputs.checks == 'true'
+    needs: [plan, go-tests, race, lint, protobuf, dependency-scan, contracts, product-e2e, analyze]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Require every product verification group
+      - name: Require every quality and product verification group
         env:
-          CHECKS_RESULT: ${{ needs.checks.result }}
-          E2E_RESULT: ${{ needs.product-e2e.result }}
+          RESULTS: ${{ toJSON(needs) }}
+        run: jq -e 'all(.[]; .result == "success")' <<< "$RESULTS"
+
+  signoff:
+    needs: plan
+    if: needs.plan.outputs.checks == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require Signed-off-by on every new commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
         run: |
-          test "$CHECKS_RESULT" = success
-          test "$E2E_RESULT" = success
+          set -euo pipefail
+          if [[ -z "$BASE_SHA" ]]; then
+            BASE_SHA=$(git merge-base origin/main "$HEAD_SHA")
+            if [[ "$BASE_SHA" == "$HEAD_SHA" ]]; then
+              if ! BASE_SHA=$(git rev-parse --verify "$HEAD_SHA^" 2>/dev/null); then
+                BASE_SHA=0000000000000000000000000000000000000000
+              fi
+            fi
+          fi
+          revision_range="$BASE_SHA..$HEAD_SHA"
+          if [[ "$BASE_SHA" == 0000000000000000000000000000000000000000 ]]; then
+            revision_range=$HEAD_SHA
+          fi
+          failed=false
+          while read -r commit; do
+            if ! git show -s --format=%B "$commit" \
+              | grep -Eiq '^Signed-off-by: .+ <[^<>]+>$'; then
+              echo "::error::commit $commit is missing a valid Signed-off-by trailer"
+              failed=true
+            fi
+          done < <(git rev-list "$revision_range")
+          if "$failed"; then
+            exit 1
+          fi
+
+  release:
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
+    concurrency:
+      group: relay-release-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      actions: read
+      contents: write
+      packages: write
+      pull-requests: read
+      id-token: write
+      attestations: write
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Validate version and source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          ./scripts/verify-production-provenance.sh --version "$RELEASE_TAG"
+      - name: Require successful main CI for the release commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ci_run_id=$(bash scripts/verify-ci-evidence.sh "$(git rev-parse HEAD)" 600)
+          echo "Verified main CI: https://github.com/$GITHUB_REPOSITORY/actions/runs/$ci_run_id" >> "$GITHUB_STEP_SUMMARY"
+      - name: Build release artifacts
+        shell: bash
+        run: bash scripts/build-release.sh "$RELEASE_TAG" dist
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Derive immutable image tags
+        id: tags
+        shell: bash
+        run: |
+          version=${RELEASE_TAG#v}
+          major=${version%%.*}
+          remainder=${version#*.}
+          minor=${remainder%%.*}
+          {
+            echo "relay<<EOF"
+            echo "ghcr.io/${GITHUB_REPOSITORY}-public:${RELEASE_TAG}"
+            echo "ghcr.io/${GITHUB_REPOSITORY}-public:${major}.${minor}"
+            echo "ghcr.io/${GITHUB_REPOSITORY}-public:${major}"
+            echo "EOF"
+            echo "coordinator<<EOF"
+            echo "ghcr.io/${GITHUB_REPOSITORY}-coordinator-public:${RELEASE_TAG}"
+            echo "ghcr.io/${GITHUB_REPOSITORY}-coordinator-public:${major}.${minor}"
+            echo "ghcr.io/${GITHUB_REPOSITORY}-coordinator-public:${major}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.relay
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.relay }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ env.RELEASE_TAG }}
+          build-args: |
+            VERSION=${{ env.RELEASE_TAG }}
+            COMMIT=${{ github.sha }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.coordinator
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.coordinator }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ env.RELEASE_TAG }}
+      - uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: dist/source-sbom.spdx.json
+      - uses: actions/attest-build-provenance@v4
+        if: ${{ github.event.repository.visibility == 'public' }}
+        with:
+          subject-path: dist/*.tar.gz
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: dist/*
+          generate_release_notes: true
