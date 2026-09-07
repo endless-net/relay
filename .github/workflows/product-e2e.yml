@@ -166,7 +166,7 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           mkdir -p "$E2E_ARTIFACT_DIR"
           cp "$RUNNER_TEMP/product-images/"*.txt "$E2E_ARTIFACT_DIR/"
-          go test -tags=e2e -json -count=1 -timeout=40m -run TestProductExtended ./e2e/... | tee "$E2E_ARTIFACT_DIR/tests.jsonl"
+          go test -tags=e2e,extended -json -count=1 -timeout=40m -run TestProductExtended ./e2e/... | tee "$E2E_ARTIFACT_DIR/tests.jsonl"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
