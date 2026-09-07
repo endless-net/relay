@@ -20,6 +20,7 @@ require the harness's exact mTLS identity.
 | --- | --- | --- |
 | protocol/auth | TLS 1.3, plaintext/TLS 1.2 rejection, unsupported version/field, malformed and oversized input, maximum payload, local delivery and isolation | `TestProductProtocol` |
 | protocol/auth | Signature, expired credential, unknown key, inactive node, different network, denied directed pair; fresh/negative/stale cache, timeout and recovery | `TestProductProtocol`, `TestProductAuthorizationControl` |
+| protocol/auth and custom domain | Typed upstream RPCs, exact caller identity, unknown fields, unsupported service version, inactive destination, deadline/recovery and removed JSON routes | `TestProductUpstreamContract` |
 | protocol/auth | Signing-key overlap, new credential, retirement, recovery | `TestProductTrustRotation` |
 | trust-bootstrap | Invalid/unavailable trust prevents startup; recovery after trust returns; plaintext upstream configuration rejected before startup | `TestProductNoTrustBootstrap` |
 | SPIFFE/mesh | All six directed relay pairs, bidirectional payload integrity, migration, peer failure and reconnect, short Coordinator restart | `TestMultiRelayInfrastructure` |
@@ -38,7 +39,7 @@ require the harness's exact mTLS identity.
 Fast regression tests remain next to the runtime code. Cache deadlines are
 checked with an injected clock after upstream completion; contradictory identity
 configuration is rejected at startup. Independent request fixtures live in
-[authz/testdata](../internal/authz/testdata/upstream-requests.json), outside the
+[authz/testdata](../internal/authz/testdata/), outside the
 E2E upstream implementation.
 
 ## Running and evidence
@@ -64,7 +65,8 @@ Cleanup runs regardless of test outcome. No automatic test retries conceal an
 initial failure. Destructive snapshot and trust-bootstrap cases have their own
 Compose projects; network faults are commanded through a bounded-buffer proxy.
 
-Acceptance recorded on 2026-09-07:
+Acceptance recorded on 2026-09-07 before the upstream protobuf transport cutover
+(the following source SHAs and results describe that checkpoint):
 
 - [Final server CI and extended](https://github.com/endless-net/relay/actions/runs/34121728292): source `3c3b7ad68d3785d49bf58204ffcd8aaf1f48db7e`; all seven regular groups passed, with **44 leaf E2E scenarios**. This includes rejection of plaintext upstream configuration before storage/listeners start.
 - The same run passed the extended recovery test in **1802.61 seconds**, completing **347 recovery cycles**, using the same source SHA and image archive as its regular groups.

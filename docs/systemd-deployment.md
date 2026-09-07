@@ -74,9 +74,9 @@ connections use mTLS and TLS 1.3.
 - PostgreSQL; the current E2E baseline uses PostgreSQL 17.
 - A dedicated database and login role. The supplied setup uses a local Unix socket
   and peer authentication.
-- HTTPS access to an upstream implementing
-  `GET /internal/coordinator/relay-control/v1/trust-bundle` and
-  `POST /internal/coordinator/relay-control/v1/authorize`.
+- HTTP/2 gRPC access with SPIFFE mTLS to an upstream implementing
+  `endlessnet.relay.v1.RelayUpstreamService` as specified in the
+  [protobuf upstream contract](upstream-contract.md).
 - A versioned JSON endpoint snapshot. PostgreSQL migrations are embedded in the
   binary and applied at every startup.
 
@@ -179,7 +179,7 @@ install -o root -g root -m 0644 \
 
 Edit:
 
-- `ENDLESSNET_COORDINATOR_URL`: the upstream HTTPS origin.
+- `ENDLESSNET_COORDINATOR_URL`: the upstream gRPC HTTPS origin.
 - Listen addresses if Coordinator gRPC should bind only to the `wg0` address.
 - `/etc/endlessnet-relay/endpoints.json`: `version` must be positive and each
   endpoint `id` must match its Relay ID. Content changes require an increased

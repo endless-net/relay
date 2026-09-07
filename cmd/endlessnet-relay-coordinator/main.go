@@ -31,7 +31,7 @@ func main() {
 	httpAddr := flag.String("http-addr", env("ENDLESSNET_RELAY_COORDINATOR_HTTP_ADDR", ":7078"), "Relay Coordinator HTTPS listen address")
 	metricsAddr := flag.String("metrics-addr", env("ENDLESSNET_RELAY_COORDINATOR_METRICS_ADDR", "127.0.0.1:9191"), "loopback health listen address")
 	dsn := flag.String("postgres-dsn", os.Getenv("ENDLESSNET_RELAY_POSTGRES_DSN"), "dedicated Relay Coordinator PostgreSQL DSN")
-	mainCoordinatorURL := flag.String("coordinator-url", os.Getenv("ENDLESSNET_COORDINATOR_URL"), "compatible upstream HTTPS origin")
+	mainCoordinatorURL := flag.String("coordinator-url", os.Getenv("ENDLESSNET_COORDINATOR_URL"), "upstream gRPC HTTPS origin")
 	endpointsFile := flag.String("endpoints-file", os.Getenv("ENDLESSNET_RELAY_ENDPOINTS_FILE"), "versioned platform endpoint snapshot JSON")
 	serviceTLSProvider := flag.String("service-tls-provider", env("ENDLESSNET_SERVICE_TLS_PROVIDER", tlsconfig.ProviderSPIFFE), "internal identity provider")
 	workloadAPIAddr := flag.String("workload-api-addr", env("ENDLESSNET_SERVICE_TLS_WORKLOAD_API_ADDR", tlsconfig.DefaultWorkloadAPI), "SPIFFE Workload API address")
@@ -80,7 +80,14 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	httpClient := &http.Client{Transport: &http.Transport{TLSClientConfig: clientTLS}, Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	upstreamURL, _ := url.Parse(*mainCoordinatorURL) // validated before any startup side effects
+	upstreamConnection, err := grpc.NewClient("passthrough:///"+upstreamURL.Host,
+		grpc.WithTransportCredentials(credentials.NewTLS(clientTLS)),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(1<<20), grpc.MaxCallSendMsgSize(1<<20)))
+	if err != nil {
+		fatal(err)
+	}
+	defer upstreamConnection.Close()
 	storage, err := store.OpenPostgres(ctx, *dsn)
 	if err != nil {
 		fatal(err)
@@ -93,7 +100,7 @@ func main() {
 	if err := storage.ReplaceEndpoints(ctx, snapshot, time.Now().UTC()); err != nil {
 		fatal(err)
 	}
-	upstream := authz.HTTPAuthorizer{BaseURL: *mainCoordinatorURL, HTTPClient: httpClient}
+	upstream := authz.GRPCAuthorizer{Client: relayv1.NewRelayUpstreamServiceClient(upstreamConnection)}
 	coordinator := &relaycoordinator.Server{IdentityPolicy: policy, Store: storage, Authorizer: authz.NewCache(upstream)}
 
 	grpcListener, err := net.Listen("tcp", *grpcAddr)

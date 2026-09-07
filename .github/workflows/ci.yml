@@ -32,6 +32,8 @@ jobs:
         run: |
           go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.10
           go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
+          buf lint
+          buf build
           buf generate
           git diff --exit-code -- api/relay/v1
       - name: Verify modules

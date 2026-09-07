@@ -75,13 +75,13 @@ jobs:
       matrix:
         include:
           - group: protocol-auth
-            test: TestProductProtocol|TestProductTrustRotation|TestProductAuthorizationControl
+            test: TestProductProtocol|TestProductTrustRotation|TestProductAuthorizationControl|TestProductUpstreamContract
             domain: endlessnet.ru
           - group: spiffe-mesh
             test: TestMultiRelayInfrastructure|TestProductSPIFFE|TestProductSPIREOutage|TestProductMeshFencing
             domain: endlessnet.ru
           - group: custom-domain
-            test: TestMultiRelayInfrastructure|TestProductSPIFFE|TestProductSPIREOutage|TestProductMeshFencing
+            test: TestMultiRelayInfrastructure|TestProductSPIFFE|TestProductSPIREOutage|TestProductMeshFencing|TestProductUpstreamContract
             domain: operator.example
           - group: trust-bootstrap
             test: TestProductNoTrustBootstrap

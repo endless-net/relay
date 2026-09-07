@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package endlessnet.relay.v1;
+
+import "api/relay/v1/relay.proto";
+
+option go_package = "github.com/endless-net/relay/api/relay/v1;relayv1";
+
+// RelayUpstreamService is implemented by the operator's authorization and trust
+// authority. Every RPC requires the exact configured Relay Coordinator mTLS identity.
+service RelayUpstreamService {
+  // OK authorizes the credential; PermissionDenied or Unauthenticated denies it.
+  rpc AuthorizeCredential(AuthorizeCredentialRequest) returns (AuthorizeCredentialResponse);
+  // Authorization is directional: source credential -> peer_id in the same network.
+  rpc AuthorizePeerPair(AuthorizePeerPairRequest) returns (AuthorizePeerPairResponse);
+  rpc GetTrustBundle(GetTrustBundleRequest) returns (GetTrustBundleResponse);
+}
+
+message AuthorizeCredentialRequest {
+  Credential credential = 1;
+}
+
+message AuthorizeCredentialResponse {}
+
+message AuthorizePeerPairRequest {
+  Credential credential = 1;
+  string peer_id = 2;
+}
+
+message AuthorizePeerPairResponse {}
+
+message GetTrustBundleRequest {}
+
+message GetTrustBundleResponse {
+  SigningTrustBundle relay_trust_bundle = 1;
+}

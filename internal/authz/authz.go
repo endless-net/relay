@@ -1,16 +1,11 @@
 package authz
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
-	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -23,129 +18,6 @@ type Authorizer interface {
 	AuthorizeCredential(context.Context, protocolv1.Credential) error
 	AuthorizePeer(context.Context, protocolv1.Credential, string) error
 	RelayTrustBundle(context.Context) (protocolv1.SigningTrustBundle, error)
-}
-
-type HTTPAuthorizer struct {
-	BaseURL    string
-	HTTPClient *http.Client
-}
-
-type authorizationRequest struct {
-	Action     string                `json:"action"`
-	Credential protocolv1.Credential `json:"credential"`
-	PeerID     string                `json:"peer_id,omitempty"`
-}
-
-func (a HTTPAuthorizer) AuthorizeCredential(ctx context.Context, credential protocolv1.Credential) error {
-	return a.authorize(ctx, authorizationRequest{Action: "credential", Credential: credential})
-}
-
-func (a HTTPAuthorizer) AuthorizePeer(ctx context.Context, credential protocolv1.Credential, peerID string) error {
-	return a.authorize(ctx, authorizationRequest{Action: "peer", Credential: credential, PeerID: peerID})
-}
-
-func (a HTTPAuthorizer) authorize(ctx context.Context, request authorizationRequest) error {
-	return a.doNoContent(ctx, "/internal/coordinator/relay-control/v1/authorize", request)
-}
-
-func (a HTTPAuthorizer) doNoContent(ctx context.Context, path string, input any) error {
-	baseURL := strings.TrimRight(strings.TrimSpace(a.BaseURL), "/")
-	if baseURL == "" {
-		return errors.New("upstream URL is required")
-	}
-	raw, err := json.Marshal(input)
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+path, bytes.NewReader(raw))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
-	client := a.httpClient()
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNoContent {
-		return nil
-	}
-	rawBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("%w: %s", ErrDenied, strings.TrimSpace(string(rawBody)))
-	}
-	return fmt.Errorf("upstream returned %s: %s", resp.Status, strings.TrimSpace(string(rawBody)))
-}
-
-func (a HTTPAuthorizer) RelayTrustBundle(ctx context.Context) (protocolv1.SigningTrustBundle, error) {
-	var response struct {
-		RelayTrustBundle protocolv1.SigningTrustBundle `json:"relay_trust_bundle"`
-	}
-	if err := a.doJSON(ctx, http.MethodGet, "/internal/coordinator/relay-control/v1/trust-bundle", nil, &response); err != nil {
-		return protocolv1.SigningTrustBundle{}, err
-	}
-	if err := response.RelayTrustBundle.Validate(); err != nil {
-		return protocolv1.SigningTrustBundle{}, err
-	}
-	return response.RelayTrustBundle, nil
-}
-
-func (a HTTPAuthorizer) doJSON(ctx context.Context, method, path string, input, output any) error {
-	baseURL := strings.TrimRight(strings.TrimSpace(a.BaseURL), "/")
-	if baseURL == "" {
-		return errors.New("upstream URL is required")
-	}
-	var body io.Reader
-	if input != nil {
-		raw, err := json.Marshal(input)
-		if err != nil {
-			return err
-		}
-		body = bytes.NewReader(raw)
-	}
-	req, err := http.NewRequestWithContext(ctx, method, baseURL+path, body)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Accept", "application/json")
-	if input != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	client := a.httpClient()
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
-			return fmt.Errorf("%w: %s", ErrDenied, strings.TrimSpace(string(raw)))
-		}
-		return fmt.Errorf("upstream returned %s: %s", resp.Status, strings.TrimSpace(string(raw)))
-	}
-	decoder := json.NewDecoder(io.LimitReader(resp.Body, 1<<20))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(output); err != nil {
-		return err
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return errors.New("upstream response contains multiple JSON values")
-		}
-		return err
-	}
-	return nil
-}
-
-func (a HTTPAuthorizer) httpClient() *http.Client {
-	if a.HTTPClient != nil {
-		return a.HTTPClient
-	}
-	return &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
 
 type Cache struct {
