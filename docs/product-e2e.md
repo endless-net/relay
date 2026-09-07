@@ -101,3 +101,34 @@ These were separate failed runs followed by corrective commits, not automatic re
 Product evidence verifies Relay against its published contracts. Each integrator
 separately validates its upstream compatibility, infrastructure integration and
 production deployment.
+
+## Upstream protobuf cutover evidence
+
+[CI 34132527958](https://github.com/endless-net/relay/actions/runs/34132527958)
+passed all seven groups, PostgreSQL invariants and required verification after
+switching upstream AuthZ/trust to gRPC. PR source:
+`e6eadc099cf0de8d9e88cbc9039f3f868c8adb32`; built/tested merge checkout:
+`6bd437fbeb10a61eaff6516a026e07d3f3f3d96d`. **56 leaf E2E scenarios passed**.
+This is regular-suite evidence; the earlier extended results above belong to
+their recorded source SHAs.
+
+| Group | Leaf scenarios | Go package elapsed, seconds |
+| --- | ---: | ---: |
+| protocol/auth | 16 | 76.186 |
+| SPIFFE/mesh | 9 | 87.237 |
+| custom domain | 15 | 81.889 |
+| fencing/recovery | 3 | 62.851 |
+| resources/lifecycle | 8 | 47.195 |
+| snapshot | 2 | 17.573 |
+| trust bootstrap | 3 | 50.507 |
+
+All groups loaded the same archive and checked its source SHA and checksum.
+These SHA-256 values identify CI Docker configurations and the image archive;
+no registry release was published.
+
+| Input | SHA-256 |
+| --- | --- |
+| Relay image ID | `49dff21308f1a9d1f87dfee63b63411518a786874f4d4184314a43206805acb9` |
+| Relay Coordinator image ID | `9c51705488cdfad1c7784523845b5fb113ec01aaf344d65d4d4902689a29c84e` |
+| Upstream/proxy image ID | `99d6845bbac9b84605458aedb40fa1eacd174f3ed65e319bcaa966530f0d2bf4` |
+| Image archive | `905622dde8b3251644d7590ccd7b7d7d7f1481a119649c35812130c64d8cdd79` |
