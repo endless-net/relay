@@ -59,7 +59,8 @@ best effort: no durable queue or delivery ACK is added by this contract.
 
 ## Conformance ownership
 
-[HTTP conformance tests](../internal/authz/authz_test.go) and the independently
+[Независимые request fixtures](../internal/authz/testdata/upstream-requests.json),
+[HTTP conformance tests](../internal/authz/conformance_test.go) and the independently
 controlled [E2E upstream](../e2e/cmd/mock-coordinator/main.go) verify the product
 boundary. Fixtures and identities are generated per run and never published.
 A production upstream must run its own conformance tests; green Relay CI does
