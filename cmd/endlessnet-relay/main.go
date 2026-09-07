@@ -142,7 +142,8 @@ func main() {
 	go func() {
 		errCh <- serveMetrics(ctx, *metricsAddr, metrics, func() bool {
 			bundle, bundleErr := controlClient.TrustBundle()
-			return server.Ready() && controlClient.Ready() && bundleErr == nil && bundle.Validate() == nil
+			_, keyErr := bundle.Resolve(bundle.ActiveKeyID, time.Now())
+			return server.Ready() && controlClient.Ready() && bundleErr == nil && bundle.Validate() == nil && keyErr == nil
 		})
 	}()
 

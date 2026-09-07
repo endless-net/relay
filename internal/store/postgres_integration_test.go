@@ -19,4 +19,5 @@ func TestPostgresReleasedEpochCannotBeReused(t *testing.T) {
 	}
 	defer s.Close()
 	checkReleasedEpoch(t, s)
+	checkConcurrentEpochs(t, s)
 }

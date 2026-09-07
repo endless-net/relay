@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"math"
 	"reflect"
 	"strings"
 	"time"
@@ -103,7 +102,7 @@ func (p *Postgres) AcquireSession(ctx context.Context, session Session, ttl time
 	if err := validateSession(session); err != nil {
 		return Session{}, err
 	}
-	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return Session{}, err
 	}
@@ -121,19 +120,18 @@ func (p *Postgres) AcquireSession(ctx context.Context, session Session, ttl time
 		return Session{}, ErrFenced
 	}
 	var epoch int64
-	err = tx.QueryRow(ctx, `SELECT epoch FROM node_session_leases WHERE network_id=$1 AND node_id=$2 FOR UPDATE`, session.NetworkID, session.NodeID).Scan(&epoch)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return Session{}, err
-	}
-	if epoch == math.MaxInt64 {
+	expires := now.Add(ttl)
+	// The row conflict serializes concurrent owners, including the first acquire.
+	// Preserve the last epoch on release and fail closed instead of wrapping.
+	err = tx.QueryRow(ctx, `INSERT INTO node_session_leases (network_id,node_id,relay_id,boot_id,epoch,lease_expires_at)
+		VALUES ($1,$2,$3,$4,1,$5)
+		ON CONFLICT (network_id,node_id) DO UPDATE SET relay_id=EXCLUDED.relay_id, boot_id=EXCLUDED.boot_id,
+		epoch=node_session_leases.epoch+1, lease_expires_at=EXCLUDED.lease_expires_at
+		WHERE node_session_leases.epoch < 9223372036854775807
+		RETURNING epoch`, session.NetworkID, session.NodeID, session.RelayID, session.BootID, expires).Scan(&epoch)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return Session{}, errors.New("session epoch exhausted")
 	}
-	epoch++
-	expires := now.Add(ttl)
-	_, err = tx.Exec(ctx, `INSERT INTO node_session_leases (network_id,node_id,relay_id,boot_id,epoch,lease_expires_at)
-		VALUES ($1,$2,$3,$4,$5,$6)
-		ON CONFLICT (network_id,node_id) DO UPDATE SET relay_id=EXCLUDED.relay_id, boot_id=EXCLUDED.boot_id, epoch=EXCLUDED.epoch, lease_expires_at=EXCLUDED.lease_expires_at`,
-		session.NetworkID, session.NodeID, session.RelayID, session.BootID, epoch, expires)
 	if err != nil {
 		return Session{}, err
 	}
