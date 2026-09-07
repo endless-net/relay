@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -471,7 +472,10 @@ func TestProductResources(t *testing.T) {
 		if event.relayErr == nil || event.relayErr.Error != "relay bandwidth limit exceeded" {
 			t.Fatal("bandwidth overflow not rejected")
 		}
-		assertTransfer(t, a, b, []byte("still-available"))
+		waitForClientClose(t, a, 3*time.Second)
+		recovered := dialRelayClientEventually(t, "relay-c", "node-c", 10*time.Second)
+		defer recovered.close()
+		assertTransfer(t, recovered, b, []byte("still-available"))
 	})
 	t.Run("bounded_sigterm", func(t *testing.T) {
 		a, b := productClients(t, false)
@@ -726,7 +730,7 @@ func TestProductMeshFencing(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Registry propagation must close even an idle inbound stream of the old boot.
-	if _, err = stream.Recv(); err == nil {
+	if _, err = stream.Recv(); err == nil || ctx.Err() != nil {
 		t.Fatal("old boot stream survived snapshot update")
 	}
 	recovered := dialRelayClientEventually(t, "relay-a", "node-a", 15*time.Second)
@@ -767,5 +771,80 @@ func TestProductNoTrustBootstrap(t *testing.T) {
 			a, b := productClients(t, false)
 			assertTransfer(t, a, b, []byte("trust-bootstrap-recovery"))
 		})
+	}
+}
+
+func TestProductSnapshotPersistence(t *testing.T) {
+	path := filepath.Join(suite.fixturesDir, "endpoints.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var initial protocolv1.EndpointSnapshot
+	if err = json.Unmarshal(raw, &initial); err != nil {
+		t.Fatal(err)
+	}
+	restart := func(raw []byte, wantReady bool) {
+		if err := os.WriteFile(path, raw, 0644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := suite.compose(context.Background(), "up", "-d", "--no-deps", "--force-recreate", "relay-coordinator"); err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if wantReady {
+			if err := suite.waitForHTTPS(ctx, "relay-coordinator", 7078, "/readyz", "relay-coordinator", suite.certificates["e2e-client"], 200); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+		if err := suite.waitFor(ctx, "rejection of invalid snapshot", func() error {
+			raw, err := suite.compose(ctx, "ps", "--status", "exited", "--services", "relay-coordinator")
+			if err != nil {
+				return err
+			}
+			if !hasService(raw, "relay-coordinator") {
+				return fmt.Errorf("process has not rejected snapshot")
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	marshal := func(v protocolv1.EndpointSnapshot) []byte {
+		raw, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return raw
+	}
+	changed := initial
+	changed.Endpoints = append([]protocolv1.Endpoint(nil), initial.Endpoints...)
+	changed.Endpoints[0].Addr = "changed:9443"
+	restart(marshal(changed), false)
+	newer := initial
+	newer.Version = initial.Version + 1
+	restart(marshal(newer), true)
+	restart(raw, false)
+	restart([]byte("{invalid"), false)
+	empty := protocolv1.EndpointSnapshot{Version: newer.Version + 1, Endpoints: []protocolv1.Endpoint{}}
+	restart(marshal(empty), true)
+	restart(marshal(empty), true)
+	address, err := suite.port(context.Background(), "relay-coordinator", 7078)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := suite.mutualHTTPClient(suite.certificates["e2e-client"], "relay-coordinator").Get("https://" + address + "/internal/relay-control/v1/endpoints")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var got protocolv1.EndpointSnapshot
+	if err = json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Version != empty.Version || len(got.Endpoints) != 0 {
+		t.Fatal("empty snapshot did not persist across restart")
 	}
 }

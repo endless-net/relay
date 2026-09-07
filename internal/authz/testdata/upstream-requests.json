@@ -1,0 +1,4 @@
+[
+ {"action":"credential","credential":{"algorithm":"ed25519","key_id":"fixture-key","network_id":"fixture-network","node_id":"fixture-source","expires_at":"2030-01-01T00:00:00Z","signature":"non-credential-fixture"}},
+ {"action":"peer","credential":{"algorithm":"ed25519","key_id":"fixture-key","network_id":"fixture-network","node_id":"fixture-source","expires_at":"2030-01-01T00:00:00Z","signature":"non-credential-fixture"},"peer_id":"fixture-target"}
+]
