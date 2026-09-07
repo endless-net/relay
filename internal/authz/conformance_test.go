@@ -183,6 +183,9 @@ func TestGRPCTrustBundleValidation(t *testing.T) {
 				return response, nil
 			})
 			_, err := (GRPCAuthorizer{Client: client}).RelayTrustBundle(context.Background())
+			if mode == "oversized" && status.Code(err) != codes.ResourceExhausted {
+				t.Fatalf("response size limit was not enforced by gRPC: %v", err)
+			}
 			if (err == nil) != (mode == "valid") {
 				t.Fatalf("trust validation outcome: %v", err)
 			}
