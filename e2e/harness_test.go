@@ -500,11 +500,11 @@ func (h *harness) captureDiagnostics() {
 }
 
 func (h *harness) generateFixtures() error {
-	publicCA, publicKey, err := createCA("EndlessNet E2E public CA")
+	publicCA, publicKey, err := createCA("Relay E2E public CA")
 	if err != nil {
 		return err
 	}
-	serviceCA, serviceKey, err := createCA("EndlessNet E2E service CA")
+	serviceCA, serviceKey, err := createCA("Relay E2E service CA")
 	if err != nil {
 		return err
 	}

@@ -51,7 +51,7 @@ func (a HTTPAuthorizer) authorize(ctx context.Context, request authorizationRequ
 func (a HTTPAuthorizer) doNoContent(ctx context.Context, path string, input any) error {
 	baseURL := strings.TrimRight(strings.TrimSpace(a.BaseURL), "/")
 	if baseURL == "" {
-		return errors.New("main Coordinator URL is required")
+		return errors.New("upstream URL is required")
 	}
 	raw, err := json.Marshal(input)
 	if err != nil {
@@ -76,7 +76,7 @@ func (a HTTPAuthorizer) doNoContent(ctx context.Context, path string, input any)
 	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
 		return fmt.Errorf("%w: %s", ErrDenied, strings.TrimSpace(string(rawBody)))
 	}
-	return fmt.Errorf("main Coordinator returned %s: %s", resp.Status, strings.TrimSpace(string(rawBody)))
+	return fmt.Errorf("upstream returned %s: %s", resp.Status, strings.TrimSpace(string(rawBody)))
 }
 
 func (a HTTPAuthorizer) RelayTrustBundle(ctx context.Context) (protocolv1.SigningTrustBundle, error) {
@@ -95,7 +95,7 @@ func (a HTTPAuthorizer) RelayTrustBundle(ctx context.Context) (protocolv1.Signin
 func (a HTTPAuthorizer) doJSON(ctx context.Context, method, path string, input, output any) error {
 	baseURL := strings.TrimRight(strings.TrimSpace(a.BaseURL), "/")
 	if baseURL == "" {
-		return errors.New("main Coordinator URL is required")
+		return errors.New("upstream URL is required")
 	}
 	var body io.Reader
 	if input != nil {
@@ -124,7 +124,7 @@ func (a HTTPAuthorizer) doJSON(ctx context.Context, method, path string, input, 
 		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
 			return fmt.Errorf("%w: %s", ErrDenied, strings.TrimSpace(string(raw)))
 		}
-		return fmt.Errorf("main Coordinator returned %s: %s", resp.Status, strings.TrimSpace(string(raw)))
+		return fmt.Errorf("upstream returned %s: %s", resp.Status, strings.TrimSpace(string(raw)))
 	}
 	decoder := json.NewDecoder(io.LimitReader(resp.Body, 1<<20))
 	decoder.DisallowUnknownFields()
@@ -134,7 +134,7 @@ func (a HTTPAuthorizer) doJSON(ctx context.Context, method, path string, input, 
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		if err == nil {
-			return errors.New("main Coordinator response contains multiple JSON values")
+			return errors.New("upstream response contains multiple JSON values")
 		}
 		return err
 	}

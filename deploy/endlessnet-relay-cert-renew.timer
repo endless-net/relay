@@ -1,5 +1,5 @@
 [Unit]
-Description=Check the public EndlessNet Relay certificate daily
+Description=Check the public Relay certificate daily
 
 [Timer]
 OnCalendar=*-*-* 03:45:00

@@ -1,5 +1,5 @@
 ---
-- name: Deploy EndlessNet Relay component
+- name: Deploy Relay component
   hosts: all
   become: true
   serial: 1

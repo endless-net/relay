@@ -1,218 +1,210 @@
-# Возможное будущее EndlessNet Relay
+# Possible future directions for Relay
 
-Статус: варианты для обсуждения, не утверждённый roadmap.
+Status: options for discussion, not an approved roadmap.
 
-Ни один пункт ниже не следует считать обещанием или выбранным дизайном. Перед
-реализацией он должен получить владельца, измеримую цель, отдельное решение и
-план совместимого rollout. Базовый принцип — не усложнять data plane без
-наблюдаемой проблемы.
+None of these items is a promise or a selected design. Before implementation,
+each needs an owner, a measurable goal, an explicit decision and a compatible
+rollout plan. Do not add complexity to the dataplane without an observed problem.
 
-## 1. Ближайшее укрепление контрактов и эксплуатации
+## 1. Strengthen contracts and operations
 
-### F-02. Ввести SLO и наблюдаемость control/mesh plane
+### F-02. Define SLOs and control/mesh observability
 
-**Проблема.** Relay имеет базовые counters, но нет метрик Relay Coordinator,
-состояния mesh peers, latency авторизации, запаса lease и возраста trust bundle.
+**Problem.** Relay has basic counters but lacks dedicated metrics for Relay
+Coordinator, mesh peer state, authorization latency, remaining lease time and
+trust bundle age.
 
-**Возможный объём.** Метрики RPC latency/error codes, PostgreSQL latency,
-cache hit/stale use, active/fenced instances, session renew failures, mesh
-ready/reconnect/queue depth, credential key age. Добавить dashboards и alerts,
-не включая node IDs или payload. Сквозной correlation ID допустим только после
-анализа кардинальности и приватности.
+**Possible scope.** RPC latency and error codes, PostgreSQL latency, cache hits
+and stale use, active/fenced instances, session renewal failures, mesh readiness,
+reconnects, queue depth and credential key age. Add dashboards and alerts without
+node IDs or payloads. End-to-end correlation IDs require cardinality and privacy
+analysis first.
 
-**Критерий запуска.** Сначала определить SLI: успешность connect, p95/p99
-delivery latency, доля ACL/control failures, время восстановления mesh и доля
-drops.
+**Entry criterion.** Define SLIs for connection success, p95/p99 delivery latency,
+ACL/control failure rates, mesh recovery time and drop rates.
 
-### F-03. Уточнить readiness, drain и post-deploy проверки
+### F-03. Refine readiness, draining and post-deployment checks
 
-Уточнение 7 сентября: Relay уже проверяет listener, instance lease и пригодный
-trust в `/readyz`; shutdown ограничен 5 секундами. Оставшаяся часть пункта —
-наблюдаемость и операционная приёмка, принадлежащая инфраструктуре оператора.
+Relay `/readyz` checks the listener, instance lease and usable trust; shutdown is
+bounded to 5 seconds. Remaining work concerns observability and the operator's
+operational acceptance.
 
-**Проблема.** Текущий Relay `/healthz` не отражает control lease или mesh, а
-Relay Coordinator `/readyz` проверяет только чтение endpoint snapshot. При
-deploy Coordinator проверяется systemd state, но не полный mTLS control flow.
+**Problem.** Relay `/healthz` does not represent control leases or mesh state.
+Relay Coordinator `/readyz` only checks endpoint snapshot reads. Checking systemd
+state alone does not validate the full mTLS control flow.
 
-**Варианты.** Разделить liveness и readiness; считать Relay ready только после
-регистрации и trust bundle; экспонировать запас instance lease; проверять
-PostgreSQL, upstream authorization и trust bundle с разной критичностью;
-добавить bounded drain period и production smoke после каждого этапа rollout.
+**Options.** Preserve separate liveness and readiness probes. Expose remaining
+instance lease time; assess PostgreSQL, upstream authorization and trust bundle
+availability with appropriate criticality; validate bounded draining and run
+production smoke checks after each rollout stage.
 
-**Ограничение.** Readiness не должна создавать каскадный отказ из-за краткой
-недоступности необязательной зависимости.
+**Constraint.** Readiness must not turn a brief failure of an optional dependency
+into a cascading outage.
 
-### F-04. Сделать миграции и housekeeping безопасными для нескольких replicas
+### F-04. Make migrations and housekeeping safe across replicas
 
-**Проблема.** Миграции применяются каждым процессом при старте без журнала и
-явной распределённой блокировки. Истёкшие instances и sessions остаются в БД.
+**Problem.** Each process applies migrations at startup without a ledger or an
+explicit distributed lock. Expired instances and sessions remain in the database.
 
-**Варианты.** Монотонный migration ledger, advisory lock, отдельный migration
-job, периодическая batch-очистка с метриками возраста/объёма. Сохраняются
-ограничения проекта: без `DEFAULT`, явного `NOT NULL` и PostgreSQL foreign keys.
-Очистка не должна уничтожать последний epoch пары network/node: released/expired
-сессия хранит fencing history, и новый acquire обязан продолжать её счётчик.
+**Options.** A monotonic migration ledger, advisory lock, separate migration job
+and periodic batch cleanup with age/size metrics. Preserve the project constraints:
+no `DEFAULT`, explicit `NOT NULL` or PostgreSQL foreign keys. Cleanup must retain
+the last epoch of each network/node pair. Released and expired sessions carry
+fencing history; new acquisitions must continue that counter.
 
-### F-05. Формализовать жизненный цикл ключей и сертификатов
+### F-05. Formalize key and certificate lifecycles
 
-**Проблема.** Код поддерживает перекрытие signing keys, но безопасный результат
-зависит от операционной последовательности выдачи trust bundle, credential и
-сертификатов workloads.
+**Problem.** The code supports overlapping signing keys, but safe rotation depends
+on the order in which trust bundles, credentials and workload certificates are issued.
 
-**Возможный объём.** Runbook ротации с overlap window, expiry alerts,
-автоматическая проверка URI SAN, staged rollout CA bundle, emergency revocation
-и тесты clock skew. Private keys по-прежнему не входят в release artifacts.
+**Possible scope.** Rotation runbooks with overlap windows, expiry alerts,
+automated URI SAN checks, staged CA bundle rollout, emergency revocation and
+clock-skew tests. Private keys remain outside release artifacts.
 
-## 2. Отказоустойчивость production
+## 2. Production resilience
 
-### F-06. Несколько Relay Coordinator replicas
+### F-06. Run multiple Relay Coordinator replicas
 
-Код отделяет Coordinator от процесса Relay, а lease state уже находится в
-PostgreSQL. Следующий шаг возможен только после безопасных concurrent migrations,
-идемпотентных startup operations, балансировки gRPC/HTTPS и chaos-тестов.
+Relay Coordinator runs separately from Relay, and lease state lives in PostgreSQL.
+Further replication requires safe concurrent migrations, idempotent startup
+operations, gRPC/HTTPS load balancing and chaos tests.
 
-Нужно заранее решить:
+Decide in advance:
 
-- является ли PostgreSQL единственным fencing authority;
-- как Relay переключается между адресами Coordinator;
-- какой outage budget допустим для per-frame authorization;
-- как исключить одновременную публикацию различающихся endpoint snapshots.
+- Whether PostgreSQL is the sole fencing authority.
+- How Relay switches between Coordinator addresses.
+- The acceptable outage budget for per-frame authorization.
+- How to prevent concurrent publication of conflicting endpoint snapshots.
 
-Само добавление второй replica не устраняет зависимость от одного PostgreSQL.
+Adding a second replica does not remove the dependency on a single PostgreSQL service.
 
-### F-07. Развернуть active-active Relay topology в production
+### F-07. Validate active-active topology in operator deployments
 
-E2E проверяет три Relay, а production workflow валидирует основной Relay и
-резервный Relay на `spb`. Следующие этапы: проверить клиентский выбор endpoint,
-session migration, отказ хоста, возврат хоста с новым `boot_id`, затем
-региональное расширение.
+Product E2E checks three Relay instances. Operator acceptance should cover client
+endpoint selection, session migration, host failure and return with a new
+`boot_id`, followed by regional expansion.
 
-До active-active эксплуатации всё ещё нужны SLO, capacity model и
-автоматизированный game day с проверкой fencing. Сертификаты остаются отдельными
-для каждого публичного Relay DNS-имени.
+Active-active operations still need SLOs, a capacity model and automated failure
+exercises that verify fencing. Each public Relay DNS name needs its own certificate.
 
-## 3. Масштабирование control path
+## 3. Scale the control path
 
-### F-08. Снизить стоимость авторизации каждого кадра без ослабления revocation
+### F-08. Reduce per-frame authorization cost without weakening revocation
 
-**Сигнал.** p99 control latency влияет на delivery latency или QPS
-`AuthorizePeer` ограничивает кластер.
+**Signal.** p99 control latency affects delivery latency, or `AuthorizePeer` QPS
+limits the cluster.
 
-**Варианты для сравнения.** Локальный bounded cache маршрутов на Relay,
-подписанные policy snapshots, push-инвалидация по `network_revision`, batch RPC
-или capability token на пару узлов. Любой вариант должен иметь ограниченный
-срок, fail-closed поведение после него и тест на отзыв ACL.
+**Options to compare.** A bounded local route cache, signed policy snapshots,
+push invalidation by `network_revision`, batch RPCs or a capability token for a
+node pair. Every option needs a bounded lifetime, fail-closed behavior after
+expiry and an ACL revocation test.
 
-Не следует просто увеличивать stale TTL: это напрямую расширяет окно после
-revocation.
+Simply extending the stale TTL directly increases the post-revocation window.
 
-### F-09. Пересмотреть full mesh только при подтверждённом пределе
+### F-09. Reconsider full mesh only after measuring a limit
 
-**Сигнал.** Число Relay делает O(N²) streams, reconnect storms или fan-out
-peer updates измеримой проблемой.
+**Signal.** O(N²) streams, reconnect storms or peer-update fan-out become a
+measurable problem as Relay counts grow.
 
-**Варианты.** Региональные gateways, sparse topology с route discovery,
-иерархический mesh или отдельный transport backbone. Нужно сравнить hops,
-blast radius, стоимость cross-region traffic и сложность fencing.
+**Options.** Regional gateways, sparse topology with route discovery, hierarchical
+mesh or a separate transport backbone. Compare hop counts, failure impact,
+cross-region traffic cost and fencing complexity.
 
-Для небольшого числа Relay текущий one-hop full mesh остаётся предпочтительнее
-из-за простоты.
+For a small number of Relay instances, the current one-hop full mesh remains
+preferable for its simplicity.
 
-### F-10. Определить обратную связь и flow control для удалённой доставки
+### F-10. Define feedback and flow control for remote delivery
 
-**Проблема.** Fire-and-forget mesh не сообщает исходному Relay результат
-удалённой доставки кадра.
+**Problem.** Fire-and-forget mesh does not report remote frame-delivery outcomes
+to the source Relay.
 
-**Варианты.** Message ID и bounded acknowledgment, явные коды `fenced`,
-`no_peer`, `slow_consumer`, credit-based mesh flow control или документированное
-сохранение fire-and-forget semantics.
+**Options.** Message IDs and bounded acknowledgments, explicit `fenced`, `no_peer`
+and `slow_consumer` codes, credit-based mesh flow control, or explicitly retaining
+fire-and-forget semantics.
 
-Перед изменением нужно выбрать продуктовую гарантию. Ack от Relay означает
-только приём в память и не должен выдаваться за end-to-end delivery. Durable
-broker следует добавлять лишь при отдельной бизнес-потребности.
+Choose the product guarantee before changing the protocol. A Relay acknowledgment
+only confirms receipt into memory and must not be presented as end-to-end delivery.
+Add a durable broker only for a separate, demonstrated product requirement.
 
-### F-11. Динамически распространять endpoint snapshot
+### F-11. Distribute endpoint snapshots dynamically
 
-**Сигнал.** Изменение endpoint через restart создаёт неприемлемую операционную
-задержку.
+**Signal.** Restart-based endpoint changes create unacceptable operational delays.
 
-**Варианты.** Watch API главного Coordinator, подписанный snapshot в object
-storage или отдельный admin RPC. Обязательны монотонная версия, hash содержимого,
-атомарная замена, rollback policy и защита от двух разных snapshots одной
-версии.
+**Options.** An upstream watch API, a signed snapshot in object storage or a
+separate admin RPC. Require monotonic versions, content hashes, atomic replacement,
+a rollback policy and rejection of conflicting snapshots with the same version.
 
-## 4. Эволюция data protocol
+## 4. Data protocol evolution
 
-### F-12. Рассматривать relay-v2 только по результатам измерений
+### F-12. Consider relay-v2 only when measurements justify it
 
-JSON-lines удобен для диагностики, но base64 и JSON увеличивают размер кадра.
-Версия 2 может рассмотреть length-prefixed binary framing, protobuf или QUIC,
-если CPU, bandwidth или head-of-line blocking станут измеримым пределом.
+JSON-lines is convenient for diagnosis, but JSON and base64 increase frame size.
+A future version 2 could consider length-prefixed binary framing, protobuf or
+QUIC if CPU, bandwidth or head-of-line blocking becomes a measured constraint.
+This is a design option, not authorization to change a protocol version.
 
-Минимальные требования к v2:
+Minimum requirements for a proposed v2:
 
-- одновременная поддержка v1 и v2 во время rollout;
-- явное согласование версии без downgrade;
-- те же или более строгие limits и unknown-field policy;
-- fuzzing parser и cross-version conformance suite;
-- отсутствие логирования payload;
-- план отключения v1 по наблюдаемой доле клиентов, а не по календарной дате.
+- An explicit transition plan for v1 and v2 during rollout.
+- Explicit version negotiation without downgrade.
+- Equivalent or stricter limits and unknown-field policy.
+- Parser fuzzing and cross-version conformance tests.
+- No payload logging.
+- A v1 retirement plan based on observed client usage rather than a calendar date.
 
-### F-13. Улучшить fairness и защиту от злоупотреблений
+### F-13. Improve fairness and abuse protection
 
-При росте публичной нагрузки можно измерить необходимость token-bucket вместо
-секундного window, квот на сеть, динамических per-source limits и интеграции с
-edge DDoS protection. Решение не должно позволять высокой кардинальности
-идентификаторов исчерпать память до аутентификации.
+As public load grows, measure the need for token buckets instead of fixed
+one-second windows, per-network quotas, dynamic per-source limits and edge DDoS
+protection. High-cardinality identifiers must not exhaust memory before authentication.
 
-## 5. Инженерная уверенность
+## 5. Engineering confidence
 
-Полезные расширения тестового контура:
+Useful extensions to the test suite include:
 
-- нагрузочные тесты admission, auth cache, per-frame RPC и mesh queues;
-- fuzz tests публичного decoder, credential/trust bundle и mesh message
-  validation;
-- chaos cases: PostgreSQL failover, длительный Coordinator outage, clock skew,
-  packet loss, asymmetric partition, certificate expiry и key rotation;
-- upgrade/downgrade matrix для соседних версий Relay и Coordinator;
-- проверка arm64 artifacts и реального systemd rollback;
-- длительный soak test с reconnect и контролем goroutine/memory growth.
+- Load tests for admission, the authorization cache, per-frame RPCs and mesh queues.
+- Fuzz tests for the public decoder, credentials, trust bundles and mesh validation.
+- Chaos cases for PostgreSQL failover, prolonged Coordinator outages, clock skew,
+  packet loss, asymmetric partitions, certificate expiry and key rotation.
+- An upgrade/downgrade matrix for adjacent Relay and Relay Coordinator releases.
+- Verification of arm64 artifacts and actual systemd rollback.
+- Longer soak tests with reconnects and goroutine/memory growth checks.
 
-## 6. Сигналы для выбора следующего шага
+## 6. Signals for choosing the next step
 
-| Наблюдаемый сигнал | Сначала рассмотреть |
+| Observed signal | Consider first |
 | --- | --- |
-| Нельзя объяснить drop или fencing incident | F-02, затем F-03 |
-| Ошибка rollout или несовместимый клиент | F-01 и upgrade matrix |
-| Coordinator outage превышает SLO | F-04 и F-06 |
-| Нужен ещё один production Relay/регион | F-02, F-03 и F-07 |
-| p99 delivery связан с control RPC | F-08 |
-| Mesh streams/reconnect создают предел | F-09 |
-| Пользователям нужна причина удалённого drop | F-10 |
-| Endpoint меняются чаще release cycle | F-11 |
-| JSON/base64 подтверждённо ограничивает CPU или сеть | F-12 |
+| An unexplained drop or fencing incident | F-02, then F-03 |
+| A rollout failure or incompatible client | Contract conformance and the upgrade matrix |
+| Coordinator outages exceed the SLO | F-04 and F-06 |
+| Another production Relay or region is needed | F-02, F-03 and F-07 |
+| p99 delivery latency correlates with control RPCs | F-08 |
+| Mesh streams or reconnects reach a limit | F-09 |
+| Users need the reason for remote drops | F-10 |
+| Endpoints change more often than releases | F-11 |
+| JSON/base64 measurably limits CPU or bandwidth | F-12 |
 
-## 7. Инварианты, которые не следует размывать
+## 7. Invariants to preserve
 
-Если отдельный ADR не докажет обратное, развитие должно сохранять:
+Unless a separate ADR demonstrates otherwise, preserve:
 
-- главный Coordinator как источник истины для ACL, revocation и signing trust;
-- TLS 1.3 на production listener и mTLS identities на control/mesh;
-- строгую версионированность контрактов;
-- fencing старых processes и sessions;
-- ограниченные память, очереди и время ожидания;
-- отсутствие payload в БД, метриках и обычных логах;
-- immutable releases, проверяемое происхождение и откат;
-- отсутствие secrets и production credentials в репозитории и artifacts.
+- The upstream as the authority for ACLs, revocation and signing trust.
+- TLS 1.3 on production listeners and mTLS identities on control/mesh.
+- Strictly versioned contracts.
+- Fencing of stale processes and sessions.
+- Bounded memory, queues and wait times.
+- No payloads in the database, metrics or ordinary logs.
+- Immutable releases, verifiable provenance and rollback.
+- No secrets or production credentials in the repository or artifacts.
 
-## 8. Процесс принятия будущего изменения
+## 8. Approving a future change
 
-Перед началом реализации:
+Before implementation:
 
-1. зафиксировать baseline и целевой SLO;
-2. описать security и privacy impact;
-3. проверить совместимость wire, gRPC, схемы и deployment;
-4. выбрать canary/rollback стратегию;
-5. добавить unit, race, integration, E2E и при необходимости chaos/load tests;
-6. определить новые метрики и alerts;
-7. оформить ADR и только затем менять production topology или contract.
+1. Record the baseline and target SLO.
+2. Describe the security and privacy impact.
+3. Check wire, gRPC, schema and deployment compatibility.
+4. Choose a canary and rollback strategy.
+5. Add unit, race, integration and E2E tests, plus chaos/load tests where needed.
+6. Define new metrics and alerts.
+7. Record the ADR before changing production topology or contracts.

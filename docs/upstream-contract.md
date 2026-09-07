@@ -1,9 +1,10 @@
 # Supported upstream contract
 
 Relay is an independent product. A self-hosting operator supplies an upstream
-implementing this contract and a credential issuer. No EndlessNet source or
-production database is involved. Compatibility of the actual EndlessNet
-Coordinator is an external integration task (architecture D-032, audit R1).
+implementing this contract and a credential issuer. Integrators own their
+upstream conformance tests and deployment acceptance. Product tests use an
+independent contract implementation without access to an integrator's sources
+or production database.
 
 ## Transport and identity
 

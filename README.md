@@ -1,13 +1,13 @@
-# EndlessNet Relay
+# Relay
 
-EndlessNet Relay provides the TLS relay dataplane, Relay Coordinator, and
+Relay provides the TLS relay dataplane, Relay Coordinator, and
 active-active relay mesh used when peers cannot establish a direct path.
 
 Relay is a standalone public product. A compatible upstream owns networks,
 nodes, directed peer authorization and signing trust; Relay accesses it only
-through the [published upstream contract](docs/upstream-contract.md). EndlessNet
-integrates and operates this product, but its sources, database and production
-configuration are not required to build or test Relay.
+through the [published upstream contract](docs/upstream-contract.md). Operators
+provide their own compatible upstream and trust infrastructure. Product builds
+and tests are autonomous.
 
 ## Documentation
 
@@ -55,10 +55,9 @@ The complete Relay and Relay Coordinator implementations are published under
 Apache-2.0. Operators can build the binaries or images and run an independent
 Relay deployment.
 
-Running the software does not grant access to the managed EndlessNet network.
-Managed clients accept only short-lived relay credentials signed by a trusted
-control-plane Ed25519 key. Expired credentials, unknown issuers, invalid
-signatures, and contract-version mismatches are rejected locally.
+Every deployment requires authorization. Relay accepts short-lived credentials
+signed by a trusted control-plane Ed25519 key. Expired credentials, unknown
+issuers, invalid signatures, and contract-version mismatches are rejected locally.
 
 Self-hosted operators must provide:
 
@@ -70,10 +69,10 @@ Self-hosted operators must provide:
 
 ## Immutable releases and integration
 
-Relay publishes immutable release artifacts after product CI/E2E. It does not
-initiate Infrastructure rollout and is not part of the EndlessNet server release
-set. Operators select a pinned artifact and deploy it using their own automation.
-EndlessNet Infrastructure owns its deployment and integration acceptance.
+Relay publishes immutable release artifacts after product CI/E2E. Operators
+select a pinned artifact and deploy it using their own automation. Deployment,
+rollback and integration acceptance belong to the operator; release workflows
+do not initiate production rollout.
 
 Release archives contain binaries, service units, renewal helpers, license
 notices, and checksums. They never contain production environment files,

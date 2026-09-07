@@ -1,252 +1,244 @@
-# Принятые архитектурные решения
+# Accepted architecture decisions
 
-Статус: принятые решения; исходный срез 19 июля 2026 года. Границы продукта
-уточнены 7 сентября согласно D-032; runtime evidence публикуется отдельно.
+Status: accepted decisions. Original documentation snapshot: July 19, 2026;
+updated September 7, 2026. Runtime evidence is published separately.
 
-Исходные обсуждения доступны не для каждого пункта, поэтому мотивация ниже
-реконструирована по коду, тестам, истории репозитория и эксплуатационным
-ограничениям. Фактическое поведение отделено от предположений о мотивации.
+Original discussions are not available for every decision. The rationale below
+is derived from code, tests, repository history and operational constraints.
+Observed behavior is distinguished from inferred motivation.
 
-## ADR-001. Выделить Relay в самостоятельный репозиторий и release lifecycle
+## ADR-001. Own the Relay repository and release lifecycle
 
-Статус: принято.
+Status: accepted.
 
-**Контекст.** Relay имеет отдельный профиль безопасности, публичные listeners,
-multi-host deployment и собственный темп выпуска. Его исходники первоначально
-были частью исходного монорепозитория EndlessNet.
+**Context.** Relay has its own security profile, public listeners, multi-host
+deployment requirements and release cadence.
 
-**Решение.** Data plane, Relay Coordinator, mesh, схемы, self-hosting документация и release
-artifacts живут в `endlessnet-relay`. Происхождение извлечённых исходников
-зафиксировано в `ORIGIN.md`.
+**Decision.** The dataplane, Relay Coordinator, mesh, schemas, self-hosting
+documentation and release artifacts belong to this repository. Relay is a
+standalone public product integrated through published network contracts.
 
-**Последствия.** Релизы и production rollout можно проверять и откатывать
-независимо. Взамен внутренние контракты с главным Coordinator становятся
-настоящими versioned network contracts и требуют совместимого rollout.
+**Consequences.** Operators can validate and roll back releases and deployments
+independently. Contracts with a compatible upstream are versioned network
+contracts and require coordinated integration changes.
 
-## ADR-002. Разделить data plane, relay control plane и главный Coordinator
+## ADR-002. Separate the dataplane, relay control plane and upstream
 
-Статус: принято.
+Status: accepted.
 
-**Контекст.** Публичному Relay нужен быстрый и минимальный data path, но ACL,
-revocation и topology нельзя дублировать на каждом edge-процессе.
+**Context.** A public Relay needs a fast, minimal data path. ACLs, revocation and
+domain topology must not be duplicated in every edge process.
 
-**Решение.** Relay передаёт payload и не хранит доменную модель. Relay
-Coordinator управляет короткими leases и маршрутом. Совместимый upstream
-авторитетен для сетей, узлов, ACL, revocation и signing trust. В интеграции
-EndlessNet эта роль принадлежит основному Coordinator.
+**Decision.** Relay forwards payloads without owning the domain model. Relay
+Coordinator manages short leases and routing. A compatible upstream is the
+authority for networks, nodes, ACLs, revocation and signing trust.
 
-**Последствия.** Границы ответственности ясны, payload не попадает в control
-plane. Цена — два сетевых перехода в control path и зависимость доставки кадра
-от доступности авторизации.
+**Consequences.** Responsibilities are explicit and payloads stay outside the
+control plane. The cost is two network calls in the uncached control path and a
+dependency on authorization availability for frame delivery.
 
-## ADR-003. Использовать active-active Relay и одношаговый full mesh
+## ADR-003. Use active-active Relay instances and a one-hop full mesh
 
-Статус: принято для текущего масштаба.
+Status: accepted for the current scale.
 
-**Контекст.** Узлы одной сети могут быть подключены к разным регионам и должны
-общаться без центрального data-plane bottleneck.
+**Context.** Nodes in one network can connect to different regions and must
+communicate without a central dataplane bottleneck.
 
-**Решение.** Каждый живой Relay получает реестр peers от Relay Coordinator и
-поддерживает gRPC stream к каждому peer. Удалённый кадр проходит один mesh hop.
+**Decision.** Each live Relay receives the peer registry from Relay Coordinator
+and maintains a gRPC stream to each peer. Remote frames traverse one mesh hop.
 
-**Последствия.** Маршрут прост, задержка предсказуема, отказ одного Relay не
-останавливает остальные. Число соединений растёт квадратично, а region/priority
-пока не уменьшают mesh topology.
+**Consequences.** Routing is simple, latency is predictable and one Relay failure
+does not stop the others. Connection counts grow quadratically; region and
+priority currently do not reduce the mesh topology.
 
-## ADR-004. Обеспечить единственного владельца сессии через lease, boot ID и epoch
+## ADR-004. Enforce one session owner with leases, boot IDs and epochs
 
-Статус: принято.
+Status: accepted.
 
-**Контекст.** После сетевого разделения, перезапуска или миграции узла старый
-Relay может ещё считать сессию активной.
+**Context.** After a partition, restart or node migration, an old Relay can still
+believe that a session is active.
 
-**Решение.** Экземпляр Relay идентифицируется `(relay_id, boot_id)` и имеет
-короткий lease. Сессия идентифицируется `(network_id, node_id)` и при каждом
-захвате получает возрастающий `epoch`. Любое renew, release и mesh delivery
-проверяет точного владельца. Release оставляет неактивную запись с последним
-epoch; expired/released session не возобновляется renewal. Переполнение epoch
-приводит к отказу, а не к повторному использованию значения.
+**Decision.** A Relay instance is identified by `(relay_id, boot_id)` and holds a
+short lease. A session is identified by `(network_id, node_id)` and receives an
+increasing `epoch` on every acquisition. Renewal, release and mesh delivery
+check the exact owner. Release retains an inactive row with the last epoch;
+renewal cannot revive expired or released sessions. Epoch overflow fails instead
+of reusing a value.
 
-**Последствия.** Старое состояние безопасно fence-ится без консенсуса между
-Relay. Система зависит от доступности PostgreSQL и корректных TTL; клиент после
-миграции может видеть короткое окно ошибок до обновления маршрута и закрытия
-старой сессии.
+**Consequences.** Stale state is fenced without consensus between Relay instances.
+The system depends on PostgreSQL availability and correct TTLs. After migration,
+clients can observe a short error window while routing updates and the old
+session closes.
 
-## ADR-005. Защитить все production-каналы TLS 1.3 и mTLS workload identities
+## ADR-005. Protect production channels with TLS 1.3 and mTLS workload identities
 
-Статус: принято.
+Status: accepted.
 
-**Контекст.** Relay публичен, а control и mesh команды позволяют менять
-маршрутизацию и передавать пользовательский трафик.
+**Context.** Relay is public; control and mesh commands can change routing and
+forward user traffic.
 
-**Решение.** Публичный listener использует TLS 1.3. Control и mesh используют
-SPIFFE mTLS через локальный SPIRE Workload API и точные URI SAN identities.
-SVID Relay должен содержать ровно одну identity
-`spiffe://endlessnet.ru/relay/{relay_id}`. Plaintext production listener
-запрещён кодом; shared token не является способом аутентификации.
+**Decision.** The public listener uses TLS 1.3. Control and mesh use SPIFFE mTLS
+through the local SPIRE Workload API and exact URI SAN identities. A Relay SVID
+must contain exactly one identity, `spiffe://<trust-domain>/relay/{relay_id}`.
+The operator configures the trust domain and service identities. Production
+plaintext listeners are rejected by the code; shared tokens are not an
+authentication mechanism.
 
-**Последствия.** Подмена `relay_id` без соответствующего SVID невозможна.
-Возникает обязательная операционная зависимость от локального SPIRE Agent,
-Workload API selectors и доступности trust bundle; ротация SVID динамическая.
+**Consequences.** A peer cannot impersonate a `relay_id` without its matching
+SVID. Operations depend on the local SPIRE Agent, Workload API selectors and
+trust bundle availability. SVID rotation is dynamic.
 
-## ADR-006. Аутентифицировать узлы короткоживущими Ed25519 credential
+## ADR-006. Authenticate nodes with short-lived Ed25519 credentials
 
-Статус: принято.
+Status: accepted.
 
-**Контекст.** Публичный Relay должен проверить идентичность узла без доступа к
-секрету главного Coordinator и поддержать смену ключа без единовременной
-остановки кластера.
+**Context.** Public Relay listeners must verify node identity without access to
+the upstream's signing secret and support key changes without stopping the cluster.
 
-**Решение.** Credential подписывается Ed25519, связывает сеть, узел, key ID и
-срок действия. Relay получает versioned trust bundle с несколькими ключами и
-окнами доверия.
+**Decision.** An Ed25519-signed credential binds the network, node, key ID and
+expiry. Relay receives a versioned trust bundle with multiple keys and trust windows.
 
-**Последствия.** Проверка подписи локальна и быстра, private signing key не
-распространяется на Relay. Revocation до истечения credential всё равно требует
-control-plane проверки и session renewal.
+**Consequences.** Signature verification is local and fast; the private signing
+key is never distributed to Relay. Revocation before credential expiry still
+requires control-plane checks and session renewal.
 
-## ADR-007. Проверять ACL для каждого кадра и fail closed с ограниченным stale cache
+## ADR-007. Check ACLs for every frame and fail closed with bounded stale caching
 
-Статус: принято.
+Status: accepted.
 
-**Контекст.** ACL может измениться во время долгоживущей сессии, поэтому одной
-проверки при connect недостаточно. Полный запрос к главному Coordinator на
-каждый кадр создаёт лишнюю нагрузку и делает краткий upstream сбой немедленной
-потерей data plane.
+**Context.** ACLs can change during a long-lived session, so a connection-time
+check is insufficient. An upstream request for every frame adds load and turns
+a brief upstream failure into immediate dataplane unavailability.
 
-**Решение.** Relay вызывает `AuthorizePeer` для каждого кадра. Relay Coordinator
-проверяет актуальность source lease, ACL и destination lease. Положительные
-решения свежи 5 секунд и допускаются до 30 секунд только при upstream error;
-отрицательные свежи 1 секунду и не имеют stale-разрешения.
+**Decision.** Relay calls `AuthorizePeer` for every frame. Relay Coordinator checks
+the current source lease, ACL and destination lease. Positive decisions are fresh
+for 5 seconds and can be used for up to 30 seconds only on upstream errors.
+Negative decisions are fresh for 1 second and cannot provide stale authorization.
 
-**Последствия.** Изменение ACL распространяется с ограниченной задержкой и
-система fail closed после stale window. Цена — синхронный control RPC на каждом
-кадре и осознанное окно до 30 секунд, в котором недавно разрешённый трафик
-может продолжиться при отказе главного Coordinator.
+**Consequences.** ACL changes propagate within a bounded window; the system fails
+closed after the stale window. The cost is a synchronous control RPC per frame
+and an explicit window of up to 30 seconds during which recently authorized
+traffic can continue during an upstream outage.
 
-## ADR-008. Версионировать wire contracts и строго разбирать сообщения
+## ADR-008. Version wire contracts and parse messages strictly
 
-Статус: принято и реализовано.
+Status: accepted and implemented.
 
-**Контекст.** Молчаливое принятие неизвестного поля или версии между независимо
-выпускаемыми компонентами может изменить security semantics.
+**Context.** Silently accepting unknown fields or versions between independently
+released components can change security semantics.
 
-**Решение.** Публичный протокол требует `protocol_version = 1`, использует
-фиксированные типы и отклоняет неизвестные JSON fields и trailing values. gRPC
-контракт находится в package `endlessnet.relay.v1`; mesh использует обязательную
-версию envelope и `oneof`. Unknown protobuf fields рекурсивно отклоняются на
-всех RPC-границах.
+**Decision.** The public protocol requires `protocol_version = 1`, uses fixed
+message types and rejects unknown JSON fields and trailing values. The gRPC
+contract is in package `endlessnet.relay.v1`; mesh messages require an envelope
+version and a `oneof`. Unknown protobuf fields are rejected recursively at every
+RPC boundary.
 
-**Последствия.** Ошибки rollout обнаруживаются сразу, а не превращаются в
-неявную деградацию. Расширение v1 требует осторожности: даже добавление поля
-несовместимо со строгими декодерами.
+**Consequences.** Incompatible changes fail explicitly instead of silently
+degrading behavior. Extending v1 requires care: even an additional field is
+incompatible with strict decoders.
 
-## ADR-009. Передавать непрозрачные кадры с жёстким размером и best-effort semantics
+## ADR-009. Forward opaque frames with a hard size limit and best-effort delivery
 
-Статус: принято.
+Status: accepted.
 
-**Контекст.** Relay не должен понимать прикладной протокол и удерживать
-неограниченные данные.
+**Context.** Relay must not interpret application protocols or retain unbounded data.
 
-**Решение.** Payload — непрозрачные bytes до 64 KiB. Сессии и очереди находятся
-в памяти; durable storage, retry и end-to-end acknowledgment отсутствуют.
+**Decision.** Payloads are opaque bytes up to 64 KiB. Sessions and queues are kept
+in memory. There is no durable storage, retry or end-to-end acknowledgment.
 
-**Последствия.** Data path прост, payload не попадает в БД и логи, а отказ не
-создаёт replay устаревших данных. Приложение обязано само выбирать семантику
-повторной отправки, дедупликации и подтверждения, если они нужны.
+**Consequences.** The data path stays simple, payloads stay out of the database
+and logs, and failures do not replay stale data. Applications choose their own
+retransmission, deduplication and acknowledgment semantics when needed.
 
-## ADR-010. Ограничить ресурсы и изолировать медленных или агрессивных клиентов
+## ADR-010. Bound resources and isolate slow or aggressive clients
 
-Статус: принято.
+Status: accepted.
 
-**Контекст.** Публичный listener подвержен connection exhaustion, медленной
-аутентификации и backpressure от получателя.
+**Context.** The public listener is exposed to connection exhaustion, slow
+authentication and receiver backpressure.
 
-**Решение.** Введены общие лимиты соединений, per-source лимит, отдельный лимит
-concurrent auth, auth timeout, максимальный кадр, ограниченные per-session и
-per-peer очереди и опциональный bandwidth limit. Медленный consumer
-отключается.
+**Decision.** Enforce global and per-source connection limits, a concurrent
+authentication limit, authentication timeout, maximum frame size, bounded
+per-session and per-peer queues, and an optional bandwidth limit. Disconnect
+slow consumers.
 
-**Последствия.** Память и goroutine имеют предсказуемую верхнюю границу, один
-клиент не блокирует writer другого. При перегрузке система предпочитает явный
-отказ потере управляемости; значения лимитов требуют настройки по нагрузочным
-тестам.
+**Consequences.** Memory and goroutine counts have predictable bounds. One client
+cannot block another client's writer. Under overload, explicit rejection takes
+priority over uncontrolled resource growth; load tests inform limit settings.
 
-## ADR-011. Хранить координационное состояние в выделенном PostgreSQL
+## ADR-011. Keep coordination state in a dedicated PostgreSQL database
 
-Статус: принято.
+Status: accepted.
 
-**Контекст.** Fencing требует атомарного увеличения epoch и общего состояния
-для всех Relay Coordinator instances, но доменные таблицы главного Coordinator
-не должны становиться частью relay release lifecycle.
+**Context.** Fencing needs atomic epoch increments and shared state across Relay
+Coordinator instances. Upstream domain tables are outside the Relay release lifecycle.
 
-**Решение.** Relay Coordinator использует выделенную PostgreSQL database.
-Захват session lease выполняется serializable transaction с row lock.
-Миграции встроены в бинарник и применяются при запуске. Схема избегает
-`DEFAULT`, явного `NOT NULL` и PostgreSQL foreign keys.
+**Decision.** Relay Coordinator uses a dedicated PostgreSQL database. Session
+acquisition uses a transaction with an instance row lock and an atomic conflict
+update to increment the epoch. Migrations are embedded in the binary and applied
+at startup. The schema avoids `DEFAULT`, explicit `NOT NULL` and PostgreSQL
+foreign keys.
 
-**Последствия.** Состояние переживает рестарт Coordinator и может стать основой
-его HA. Одновременно PostgreSQL находится на критическом пути control plane;
-startup migrations и очистка истёкших строк пока минимальны.
+**Consequences.** State survives Coordinator restarts and can support high
+availability. PostgreSQL is on the critical control-plane path; startup migration
+coordination and expired-row cleanup remain minimal.
 
-## ADR-012. Публиковать endpoint как монотонно версионированный snapshot
+## ADR-012. Publish endpoints as a monotonically versioned snapshot
 
-Статус: принято.
+Status: accepted.
 
-**Контекст.** Клиентам нужен согласованный набор публичных Relay, который можно
-обновлять независимо от их живого mesh registry.
+**Context.** Clients need a consistent set of public Relay endpoints that can be
+updated independently of the live mesh registry.
 
-**Решение.** Relay Coordinator загружает строгий JSON snapshot, запрещает
-движение версии назад и атомарно заменяет набор endpoint в PostgreSQL.
+**Decision.** Relay Coordinator loads a strict JSON snapshot, rejects version
+rollback and atomically replaces the endpoint set in PostgreSQL.
 
-**Последствия.** Распространяется цельное и воспроизводимое состояние. Сейчас
-изменение требует перезапуска Coordinator; одинаковая версия с другим
-содержимым отклоняется, поэтому каждое изменение topology обязано повышать
-монотонную версию snapshot.
+**Consequences.** Publication represents a complete, reproducible state. Updates
+currently require a Coordinator restart. Different contents under the same
+version are rejected, so topology changes require a higher snapshot version.
 
-## ADR-013. Выпускать неизменяемые artifacts и развёртывать с проверяемым rollback
+## ADR-013. Publish immutable artifacts and support verifiable operator rollback
 
-Статус: принято.
+Status: accepted.
 
-**Контекст.** Production Relay распределён по хостам; частичный rollout или
-непроверяемая сборка повышают риск сетевой деградации.
+**Context.** Relay deployments span hosts. Partial rollouts and unverifiable
+builds increase the risk of network degradation.
 
-**Решение.** Release строится из semver tag с проверкой происхождения из
-merged PR. Публикуются checksums, multi-architecture artifacts, containers,
-SBOM и provenance. Deployment использует release directory, атомарный symlink,
-последовательный rollout и автоматическое восстановление предыдущей версии при
-ошибке.
+**Decision.** Releases are built from semver tags with merged-PR provenance checks.
+Checksums, multi-architecture artifacts, containers, SBOMs and provenance are
+published after product CI/E2E. Operators own deployment and rollback. The
+systemd guide describes release directories, atomic symlinks and sequential
+rollout with restoration of the previous version on failure.
 
-**Последствия.** Relay публикует immutable artifact после product CI/E2E.
-Согласно D-032 rollout принадлежит инфраструктуре оператора; producer workflows
-его не инициируют. Для EndlessNet это репозиторий Infrastructure. Настоящий SPIRE
-в product E2E создаётся временно, без доступа к production. Описанная выше механика
-rollback является вариантом размещения оператора, а не частью release продукта.
+**Consequences.** Release workflows publish artifacts and do not initiate
+production rollout. Product E2E creates ephemeral SPIRE infrastructure without
+production access. Deployment and rollback procedures belong to the operator.
 
-## ADR-014. Держать production hosts простыми и минимально привилегированными
+## ADR-014. Keep production hosts simple and minimally privileged
 
-Статус: принято.
+Status: accepted.
 
-**Контекст.** Relay не нуждается в оркестраторе для своей текущей топологии, но
-работает на публичной границе.
+**Context.** Relay does not require an orchestrator for its current topology,
+but operates at a public boundary.
 
-**Решение.** Компоненты запускаются systemd от отдельного пользователя с
-filesystem sandboxing и без новых привилегий. Несекретная production-
-конфигурация versioned вместе с release, workload identity поступает через
-SPIRE Workload API, а публичный private key — через systemd credential.
+**Decision.** The supplied systemd units run components as a dedicated user with
+filesystem sandboxing and no new privileges. Configuration templates are
+versioned with the release; operators own actual runtime configuration.
+Workload identities come from the SPIRE Workload API, and the public private
+key is supplied through a systemd credential.
 
-**Последствия.** Модель эксплуатации прозрачна, а artifact не содержит
-credentials. Масштабирование, certificate rotation и координация нескольких
-хостов остаются ответственностью deployment automation.
+**Consequences.** Operations are inspectable and artifacts contain no credentials.
+Scaling, certificate rotation and multi-host coordination remain responsibilities
+of the operator's deployment automation.
 
-## Как менять эти решения
+## Changing these decisions
 
-Изменение решения требует отдельного ADR или обновления этого журнала до начала
-несовместимой реализации. Минимально нужно описать:
+An incompatible implementation change requires a separate ADR or an update to
+this log before implementation starts. At minimum, describe:
 
-1. измеряемую проблему текущего решения;
-2. требования безопасности и совместимости;
-3. рассмотренные альтернативы;
-4. миграцию данных и поэтапный rollout;
-5. способ отката;
-6. тесты, метрики и критерии завершения.
+1. The measurable problem with the current decision.
+2. Security and compatibility requirements.
+3. Alternatives considered.
+4. Data migration and staged rollout.
+5. Rollback procedures.
+6. Tests, metrics and completion criteria.

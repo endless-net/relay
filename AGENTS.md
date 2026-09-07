@@ -14,6 +14,12 @@
 - Production listeners use TLS 1.3. Relay control and mesh use mTLS identities.
 - Migrations must not add `DEFAULT`, explicit `NOT NULL`, or PostgreSQL foreign keys.
 - Run `gofmt -w .`, `go vet ./...`, `go test -race ./...`, and `go build ./cmd/...` before handoff.
-- GitHub Actions runner-unit infrastructure (installation, registration, systemd policy, inventory, recovery, and rollout) is owned by `endless-net/observability`; keep only the minimal `runs-on` selectors in this repository.
-- SPIRE Server/Agent operations and workload-entry reconciliation are owned by `endless-net/observability` through guarded direct SSH. Keep Relay SPIFFE IDs and systemd workload requirements here, but never operate or inspect production SPIRE from Actions or deployment playbooks. Autonomous product E2E may create and destroy isolated ephemeral SPIRE servers, agents and workload entries on GitHub-hosted runners without production access.
-- Release publishes immutable artifacts after product CI/E2E. Production rollout belongs to the operator (EndlessNet Infrastructure); this repository must not initiate it.
+- Product CI uses GitHub-hosted runners without production access. Runner infrastructure outside GitHub belongs to its operator; keep repository workflows autonomous.
+- Production SPIRE Server/Agent operations and workload-entry reconciliation belong to the operator. Keep Relay SPIFFE IDs and systemd workload requirements here, but never operate or inspect production SPIRE from Actions or deployment playbooks. Autonomous product E2E may create and destroy isolated ephemeral SPIRE servers, agents and workload entries on GitHub-hosted runners without production access.
+- Release publishes immutable artifacts after product CI/E2E. Production rollout belongs to the operator; this repository must not initiate it.
+
+## Documentation
+
+- Write repository documentation, comments, diagnostics and workflow labels in English.
+- Describe Relay as a standalone public product with a compatible upstream and operator-owned infrastructure. Keep integration-specific deployment history outside this repository.
+- Preserve published technical identifiers, protocol fields, versions and required license notices when editing prose.
