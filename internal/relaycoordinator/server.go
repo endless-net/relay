@@ -45,14 +45,11 @@ func (s *Server) RegisterInstance(ctx context.Context, request *relayv1.Register
 	if err != nil {
 		return nil, mapStoreError(err)
 	}
-	bundle, err := s.Authorizer.RelayTrustBundle(ctx)
+	bundle, err := s.relayTrustBundle(ctx)
 	if err != nil {
-		return nil, status.Error(codes.Unavailable, "relay trust bundle unavailable")
+		return nil, err
 	}
-	if err := bundle.Validate(); err != nil {
-		return nil, status.Error(codes.Unavailable, "relay trust bundle unavailable")
-	}
-	return &relayv1.RegisterInstanceResponse{Peers: protoInstances(peers), LeaseExpiresUnixNano: expires.UnixNano(), RelayTrustBundle: relayv1.TrustBundleFromProtocol(bundle)}, nil
+	return &relayv1.RegisterInstanceResponse{Peers: protoInstances(peers), LeaseExpiresUnixNano: expires.UnixNano(), RelayTrustBundle: bundle}, nil
 }
 
 func (s *Server) HeartbeatInstance(ctx context.Context, request *relayv1.HeartbeatInstanceRequest) (*relayv1.HeartbeatInstanceResponse, error) {
@@ -66,6 +63,14 @@ func (s *Server) HeartbeatInstance(ctx context.Context, request *relayv1.Heartbe
 	if err != nil {
 		return nil, mapStoreError(err)
 	}
+	bundle, err := s.relayTrustBundle(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &relayv1.HeartbeatInstanceResponse{Peers: protoInstances(peers), LeaseExpiresUnixNano: expires.UnixNano(), RelayTrustBundle: bundle}, nil
+}
+
+func (s *Server) relayTrustBundle(ctx context.Context) (*relayv1.SigningTrustBundle, error) {
 	bundle, err := s.Authorizer.RelayTrustBundle(ctx)
 	if err != nil {
 		return nil, status.Error(codes.Unavailable, "relay trust bundle unavailable")
@@ -73,7 +78,7 @@ func (s *Server) HeartbeatInstance(ctx context.Context, request *relayv1.Heartbe
 	if err := bundle.Validate(); err != nil {
 		return nil, status.Error(codes.Unavailable, "relay trust bundle unavailable")
 	}
-	return &relayv1.HeartbeatInstanceResponse{Peers: protoInstances(peers), LeaseExpiresUnixNano: expires.UnixNano(), RelayTrustBundle: relayv1.TrustBundleFromProtocol(bundle)}, nil
+	return relayv1.TrustBundleFromProtocol(bundle), nil
 }
 
 func (s *Server) AcquireSession(ctx context.Context, request *relayv1.AcquireSessionRequest) (*relayv1.AcquireSessionResponse, error) {
@@ -101,8 +106,9 @@ func (s *Server) RenewSession(ctx context.Context, request *relayv1.RenewSession
 	if err := s.authorizeRelayIdentity(ctx, request.GetRelayId()); err != nil {
 		return nil, err
 	}
-	if !canonicalRequired(request.GetBootId()) || !canonicalRequired(request.GetNetworkId()) || !canonicalRequired(request.GetNodeId()) || request.GetEpoch() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "session identity and epoch are required")
+	lease, err := sessionFromRequest(request)
+	if err != nil {
+		return nil, err
 	}
 	credential, err := relayv1.CredentialToProtocol(request.GetCredential())
 	if err != nil || credential.NetworkID != request.GetNetworkId() || credential.NodeID != request.GetNodeId() {
@@ -111,7 +117,7 @@ func (s *Server) RenewSession(ctx context.Context, request *relayv1.RenewSession
 	if err := s.Authorizer.AuthorizeCredential(ctx, credential); err != nil {
 		return nil, mapAuthorizationError(err)
 	}
-	_, err = s.Store.RenewSession(ctx, store.Session{NetworkID: request.GetNetworkId(), NodeID: request.GetNodeId(), RelayID: request.GetRelayId(), BootID: request.GetBootId(), Epoch: request.GetEpoch()}, s.sessionTTL())
+	_, err = s.Store.RenewSession(ctx, lease, s.sessionTTL())
 	if err != nil {
 		return nil, mapStoreError(err)
 	}
@@ -122,10 +128,11 @@ func (s *Server) ReleaseSession(ctx context.Context, request *relayv1.ReleaseSes
 	if err := s.authorizeRelayIdentity(ctx, request.GetRelayId()); err != nil {
 		return nil, err
 	}
-	if !canonicalRequired(request.GetBootId()) || !canonicalRequired(request.GetNetworkId()) || !canonicalRequired(request.GetNodeId()) || request.GetEpoch() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "session identity and epoch are required")
+	lease, err := sessionFromRequest(request)
+	if err != nil {
+		return nil, err
 	}
-	err := s.Store.ReleaseSession(ctx, store.Session{NetworkID: request.GetNetworkId(), NodeID: request.GetNodeId(), RelayID: request.GetRelayId(), BootID: request.GetBootId(), Epoch: request.GetEpoch()})
+	err = s.Store.ReleaseSession(ctx, lease)
 	if err != nil {
 		return nil, mapStoreError(err)
 	}
@@ -281,4 +288,24 @@ func (s *Server) sessionTTL() time.Duration {
 
 func canonicalRequired(value string) bool {
 	return value != "" && value == strings.TrimSpace(value)
+}
+
+type sessionRequest interface {
+	GetRelayId() string
+	GetBootId() string
+	GetNetworkId() string
+	GetNodeId() string
+	GetEpoch() int64
+}
+
+// sessionFromRequest requires the caller to authorize relay_id first.
+func sessionFromRequest(request sessionRequest) (store.Session, error) {
+	lease := store.Session{
+		RelayID: request.GetRelayId(), BootID: request.GetBootId(),
+		NetworkID: request.GetNetworkId(), NodeID: request.GetNodeId(), Epoch: request.GetEpoch(),
+	}
+	if !canonicalRequired(lease.BootID) || !canonicalRequired(lease.NetworkID) || !canonicalRequired(lease.NodeID) || lease.Epoch <= 0 {
+		return store.Session{}, status.Error(codes.InvalidArgument, "session identity and epoch are required")
+	}
+	return lease, nil
 }
