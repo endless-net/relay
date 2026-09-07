@@ -295,6 +295,7 @@ func TestProductFencing(t *testing.T) {
 		if _, err = suite.compose(context.Background(), "up", "-d", "--no-deps", "--force-recreate", "relay-coordinator"); err != nil {
 			t.Fatal(err)
 		}
+		client = controlClient(t) // Compose recreated the published host port.
 		restartCtx, restartCancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer restartCancel()
 		response, err := client.AcquireSession(restartCtx, &relayv1.AcquireSessionRequest{RelayId: "relay-a", BootId: suite.bootIDs["relay-a"], Credential: credential}, grpc.WaitForReady(true))
@@ -324,6 +325,10 @@ func TestProductFencing(t *testing.T) {
 	})
 	t.Run("stalled_control_fences_process", func(t *testing.T) {
 		a, b := productClients(t, false)
+		readyAddress, err := suite.port(context.Background(), "relay-a", 9090)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if _, err := suite.compose(context.Background(), "pause", "relay-coordinator"); err != nil {
 			t.Fatal(err)
 		}
@@ -347,11 +352,7 @@ func TestProductFencing(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		address, err := suite.port(context.Background(), "relay-a", 9090)
-		if err != nil {
-			t.Fatal(err)
-		}
-		response, readyErr := (&http.Client{Timeout: 2 * time.Second}).Get("http://" + address + "/readyz")
+		response, readyErr := (&http.Client{Timeout: 2 * time.Second}).Get("http://" + readyAddress + "/readyz")
 		if readyErr == nil {
 			response.Body.Close()
 			if response.StatusCode == 200 {
