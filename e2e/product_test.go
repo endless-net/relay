@@ -8,8 +8,10 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -68,6 +70,57 @@ func TestProductProtocol(t *testing.T) {
 		testSecurityContracts(t, map[string]*relayClient{"node-a": a, "node-b": b})
 		assertTransfer(t, a, b, bytes.Repeat([]byte{0x83}, protocolv1.MaxFramePayloadBytes))
 		assertTransfer(t, b, a, []byte("reverse-local"))
+	})
+	t.Run("malformed_and_oversized_input", func(t *testing.T) {
+		address, err := suite.port(context.Background(), "relay-a", 9443)
+		if err != nil {
+			t.Fatal(err)
+		}
+		plaintext, err := net.DialTimeout("tcp", address, time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		plaintext.SetDeadline(time.Now().Add(3 * time.Second))
+		_, _ = io.WriteString(plaintext, "{\"type\":\"client_hello\"}\n")
+		response := make([]byte, 64)
+		n, _ := plaintext.Read(response)
+		plaintext.Close()
+		if bytes.Contains(response[:n], []byte("ready")) {
+			t.Fatal("plaintext accepted")
+		}
+		for _, raw := range []string{"{invalid\n", strings.Repeat("x", 200000) + "\n"} {
+			conn, err := tls.Dial("tcp", address, &tls.Config{RootCAs: suite.publicRoots, ServerName: "relay-a", MinVersion: tls.VersionTLS13})
+			if err != nil {
+				t.Fatal(err)
+			}
+			conn.SetDeadline(time.Now().Add(3 * time.Second))
+			_, _ = io.WriteString(conn, raw)
+			var reply map[string]any
+			err = json.NewDecoder(conn).Decode(&reply)
+			conn.Close()
+			if err == nil && reply["type"] == protocolv1.MessageReady {
+				t.Fatal("malformed input accepted")
+			}
+		}
+		a, b := productClients(t, true)
+		if err := a.send("node-b", bytes.Repeat([]byte{1}, protocolv1.MaxFramePayloadBytes+1)); err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			event := waitEvent(t, a, time.Until(deadline))
+			if event.relayErr != nil {
+				return
+			}
+			if event.closed != nil {
+				return
+			}
+			if event.frame != nil {
+				t.Fatal("oversized payload returned")
+			}
+		}
+		_ = b
+		t.Fatal("oversized payload not rejected")
 	})
 	t.Run("credential_rejections", func(t *testing.T) {
 		for _, kind := range []string{"signature", "expired", "unknown_key", "inactive", "network"} {
@@ -344,4 +397,79 @@ func hasService(output, service string) bool {
 		}
 	}
 	return false
+}
+
+func upstreamConfig(bundle protocolv1.SigningTrustBundle) map[string]any {
+	nodes := []string{"node-a", "node-b", "node-c", "node-d"}
+	pairs := []map[string]string{}
+	for _, a := range nodes {
+		for _, b := range nodes {
+			if a != b {
+				pairs = append(pairs, map[string]string{"from": a, "to": b})
+			}
+		}
+	}
+	return map[string]any{"network_id": testNetworkID, "nodes": nodes, "peer_pairs": pairs, "relay_trust_bundle": bundle}
+}
+func TestProductTrustRotation(t *testing.T) {
+	oldKey := suite.signingKey
+	oldBundle, err := protocolv1.NewSigningTrustBundle(base64.RawURLEncoding.EncodeToString(oldKey.Public().(ed25519.PublicKey)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newBundle, err := protocolv1.NewSigningTrustBundle(base64.RawURLEncoding.EncodeToString(pub))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { suite.signingKey = oldKey; setUpstream(t, map[string]any{"config": upstreamConfig(oldBundle)}) })
+	overlap := newBundle
+	overlap.Keys = append(overlap.Keys, oldBundle.Keys...)
+	setUpstream(t, map[string]any{"config": upstreamConfig(overlap)})
+	suite.signingKey = key
+	client := dialRelayClientEventually(t, "relay-a", "node-a", 20*time.Second)
+	client.close()
+	suite.signingKey = oldKey
+	client = dialRelayClientEventually(t, "relay-a", "node-a", 20*time.Second)
+	client.close()
+	setUpstream(t, map[string]any{"config": upstreamConfig(newBundle)})
+	deadline := time.Now().Add(20 * time.Second)
+	retired := false
+	for time.Now().Before(deadline) {
+		client, err := suite.dialRelayClient("relay-a", "node-a")
+		if err != nil {
+			retired = true
+			break
+		}
+		client.close()
+		waitPoll(deadline)
+	}
+	if !retired {
+		t.Fatal("retired key remained accepted")
+	}
+	suite.signingKey = key
+	a, b := productClients(t, false)
+	assertTransfer(t, a, b, []byte("rotation"))
+}
+func TestProductSnapshotIdentity(t *testing.T) {
+	address, err := suite.port(context.Background(), "relay-coordinator", 7078)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"e2e-client", "relay-a", "relay-coordinator"} {
+		resp, err := suite.mutualHTTPClient(suite.certificates[name], "relay-coordinator").Get("https://" + address + "/internal/relay-control/v1/endpoints")
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if name == "e2e-client" && resp.StatusCode != 200 {
+			t.Fatalf("exact caller rejected: %d", resp.StatusCode)
+		}
+		if name != "e2e-client" && resp.StatusCode == 200 {
+			t.Fatalf("wrong snapshot caller accepted: %s", name)
+		}
+	}
 }

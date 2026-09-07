@@ -75,7 +75,7 @@ jobs:
       matrix:
         include:
           - group: protocol-auth
-            test: TestProductProtocol
+            test: TestProductProtocol|TestProductTrustRotation
             domain: endlessnet.ru
           - group: spiffe-mesh
             test: TestMultiRelayInfrastructure|TestProductSPIFFE
@@ -84,7 +84,7 @@ jobs:
             test: TestMultiRelayInfrastructure|TestProductSPIFFE
             domain: operator.example
           - group: fencing-recovery
-            test: TestProductFencing
+            test: TestProductSnapshotIdentity|TestProductFencing
             domain: endlessnet.ru
           - group: resources-lifecycle
             test: TestProductResources
