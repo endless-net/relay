@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -24,8 +23,7 @@ import (
 )
 
 const (
-	coordinatorURI = "spiffe://endlessnet.ru/service/relay-coordinator"
-	maxBodyBytes   = 1 << 20
+	maxBodyBytes = 1 << 20
 )
 
 type config struct {
@@ -58,9 +56,6 @@ type server struct {
 
 func main() {
 	addr := flag.String("addr", ":9447", "HTTPS listen address")
-	certFile := flag.String("tls-cert-file", "", "server certificate")
-	keyFile := flag.String("tls-key-file", "", "server private key")
-	caFile := flag.String("service-ca-file", "", "service CA bundle")
 	configFile := flag.String("config-file", "", "strict mock configuration")
 	workloadAPI := flag.String("workload-api-addr", "", "ephemeral SPIRE Workload API")
 	domain := flag.String("trust-domain", tlsconfig.DefaultTrustDomain, "test trust domain")
@@ -74,9 +69,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	_ = certFile
-	_ = keyFile
-	_ = caFile
 	runtime, err := tlsconfig.NewWorkloadRuntime(context.Background(), *workloadAPI, policy.UpstreamID)
 	if err != nil {
 		log.Fatal(err)
@@ -130,27 +122,6 @@ func loadConfig(path string) (config, error) {
 		return cfg, fmt.Errorf("invalid trust bundle: %w", err)
 	}
 	return cfg, nil
-}
-
-func mutualTLS(certFile, keyFile, caFile string) (*tls.Config, error) {
-	certificate, err := tls.LoadX509KeyPair(strings.TrimSpace(certFile), strings.TrimSpace(keyFile))
-	if err != nil {
-		return nil, err
-	}
-	rawCA, err := os.ReadFile(strings.TrimSpace(caFile))
-	if err != nil {
-		return nil, err
-	}
-	roots := x509.NewCertPool()
-	if !roots.AppendCertsFromPEM(rawCA) {
-		return nil, errors.New("service CA contains no certificates")
-	}
-	return &tls.Config{
-		Certificates: []tls.Certificate{certificate},
-		ClientCAs:    roots,
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-		MinVersion:   tls.VersionTLS13,
-	}, nil
 }
 
 func newServer(cfg config) *server {
