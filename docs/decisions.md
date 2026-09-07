@@ -213,11 +213,11 @@ SBOM и provenance. Deployment использует release directory, атом�
 последовательный rollout и автоматическое восстановление предыдущей версии при
 ошибке.
 
-**Последствия.** Версию можно однозначно проверить и быстро откатить. Выпуск и
-production deployment выполняются guarded GitHub workflows на стандартных
-GitHub-hosted runners. Управляемый inventory и runtime-конфигурация находятся
-только в защищённом production environment; SPIRE и host-level recovery
-остаются внешними по отношению к этому репозиторию.
+**Последствия.** Relay публикует immutable artifact после product CI/E2E.
+Согласно D-032 rollout принадлежит инфраструктуре оператора; producer workflows
+его не инициируют. Для EndlessNet это репозиторий Infrastructure. Настоящий SPIRE
+в product E2E создаётся временно, без доступа к production. Описанная выше механика
+rollback является вариантом размещения оператора, а не частью release продукта.
 
 ## ADR-014. Держать production hosts простыми и минимально привилегированными
 

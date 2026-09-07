@@ -1,10 +1,11 @@
 # Архитектура EndlessNet Relay
 
-Статус: текущее состояние сервиса на 19 июля 2026 года.
+Статус: архитектурная модель самостоятельного продукта, обновлена 7 сентября 2026 года.
+Проверка реализации и CI фиксируется отдельно; принятие модели не означает завершения приёмки.
 
 ## 1. Назначение и границы
 
-EndlessNet Relay передаёт непрозрачные кадры между узлами одной EndlessNet-сети,
+EndlessNet Relay передаёт непрозрачные кадры между узлами одной авторизованной сети,
 когда прямое соединение между ними недоступно или не выбрано. Репозиторий
 владеет двумя production-компонентами:
 
@@ -14,11 +15,13 @@ EndlessNet Relay передаёт непрозрачные кадры между
   экземпляров, аренда и fencing сессий, поиск текущего владельца узла,
   авторизация и публикация списка публичных endpoint.
 
-Главный EndlessNet Coordinator остаётся единственным источником истины для
-сетей, узлов, ACL, отзыва учётных данных и доверия к подписывающим ключам.
-Relay Coordinator не копирует эту предметную модель в свою базу, а обращается
-к главному Coordinator через внутренний API и хранит только короткоживущий
-кэш решений.
+Relay является самостоятельным публичным продуктом согласно
+[D-032](https://github.com/endless-net/architecture/blob/main/docs/ru/decisions/d-032.md).
+Совместимый upstream владеет сетями, узлами, направленными ACL и signing trust.
+Relay Coordinator обращается к нему через [опубликованный контракт](upstream-contract.md)
+и хранит короткоживущий кэш. EndlessNet Coordinator является интегратором;
+его текущая совместимость (R1) требует отдельной проверки в его репозитории.
+Исходники, БД, CI и production-конфигурация других компонентов не нужны продукту.
 
 Сервис намеренно не является:
 
@@ -31,15 +34,17 @@ Relay Coordinator не копирует эту предметную модель
 
 ```mermaid
 flowchart LR
-    A["Узел A"] -->|"relay-v1, TLS 1.3"| RA["Relay A"]
-    B["Узел B"] -->|"relay-v1, TLS 1.3"| RB["Relay B"]
-    RA <-->|"RelayMesh gRPC, mTLS"| RB
-    RA -->|"RelayControl gRPC, mTLS"| RC["Relay Coordinator"]
-    RB -->|"RelayControl gRPC, mTLS"| RC
-    RC -->|"leases, registry, endpoints"| PG[("Выделенный PostgreSQL")]
-    RC -->|"authorization + trust bundle, SPIFFE mTLS"| MC["Главный Coordinator"]
-    RC -->|"versioned endpoint snapshot, SPIFFE mTLS"| MC
-    MC -->|"relay endpoints"| Clients["Клиенты / control plane"]
+    A["Независимые клиенты"] -->|"relay-v1, TLS 1.3 + credential"| RA
+    A -->|"relay-v1, TLS 1.3 + credential"| RB
+    subgraph Product["Публичный продукт Relay"]
+      RA["Relay A"] <-->|"RelayMesh gRPC, mTLS"| RB["Relay B"]
+      RA -->|"RelayControl gRPC, mTLS"| RC["Relay Coordinator"]
+      RB -->|"RelayControl gRPC, mTLS"| RC
+      RC -->|"leases, registry, endpoints"| PG[("PostgreSQL продукта")]
+    end
+    RC -->|"AuthZ + trust, SPIFFE mTLS"| MC["Совместимый upstream / EndlessNet Coordinator"]
+    MC -->|"Чтение endpoint snapshot, exact identity"| RC
+    Product -->|"Immutable release"| Infra["Инфраструктура оператора"]
 ```
 
 Payload проходит только через Relay и relay mesh. Relay Coordinator и главный
@@ -320,12 +325,15 @@ path. Plaintext и standalone fallback отсутствуют.
 | Отказ Relay Coordinator | Новые авторизации не проходят; session renewal закрывает активные сессии; instance lease ограничивает жизнь процесса |
 | Отказ главного Coordinator | Работает только ограниченный положительный stale cache; после окна авторизация закрывается |
 | Отказ PostgreSQL | Control RPC и readiness Relay Coordinator перестают быть успешными |
-| SIGTERM | Relay перестаёт принимать соединения и закрывает сессии; gRPC server останавливается gracefully |
+| SIGTERM | Relay прекращает приём и закрывает сессии/mesh; graceful gRPC shutdown ограничен 5 секундами, затем Stop |
 
-E2E-набор поднимает PostgreSQL, строгий mock главного Coordinator, Relay
-Coordinator и три production Relay. Он проверяет full-mesh маршрутизацию,
-TLS/mTLS identities, ACL, миграцию и fencing сессий, отказ и восстановление
-Relay, а также короткий перезапуск Relay Coordinator.
+Автономный E2E поднимает PostgreSQL, управляемый upstream, SPIRE Server/Agents,
+Relay Coordinator и три Relay из одного SHA. Используются production binaries,
+настоящий Workload API и независимые сетевые клиенты. GitHub-hosted CI разделён
+на verify, storage и группы protocol/auth, SPIFFE/mesh, fencing/recovery,
+resources/lifecycle; отдельный запуск проверяет пользовательский trust domain.
+Отсутствие рабочего стенда — ошибка setup. Ручной extended run длится 30 минут.
+Результат отдельного запуска не подтверждает интеграцию основного Coordinator.
 
 ## 11. Наблюдаемость
 
@@ -345,6 +353,8 @@ format на `/metrics`. Основные группы метрик:
 Текущая семантика probes:
 
 - Relay `/healthz` подтверждает только работу локального HTTP server;
+- Relay `/readyz` требует listener, действующий instance lease, пригодный активный
+  signing key и отсутствие fencing/draining; отказ одного mesh peer не отключает узел;
 - Relay Coordinator `/healthz` является liveness;
 - Relay Coordinator `/readyz` проверяет чтение endpoint snapshot из БД, но не
   доступность главного Coordinator, trust bundle или способность обслужить
@@ -381,35 +391,13 @@ variables. Bandwidth limit и admission limits сейчас задаются т�
 
 Endpoint snapshot читается только при старте; hot reload сейчас отсутствует.
 
-## 13. Сборка, выпуск и развёртывание
+## 13. Выпуск и размещение
 
-CI проверяет форматирование, `go vet`, race tests, сборку, актуальность
-сгенерированного protobuf, целостность модулей, shell scripts, уязвимости,
-контейнеры и multi-relay E2E.
-
-Release создаётся только из semver-тега `vX.Y.Z` с подтверждённым происхождением
-из merge в `main`. Публикуются:
-
-- статические Linux-бинарники для amd64 и arm64;
-- архивы с checksums;
-- multi-arch OCI images;
-- SBOM и, где доступно, build provenance attestation.
-
-Systemd units работают от отдельного пользователя, включают
-`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome` и `PrivateTmp`.
-Deployment использует неизменяемые release directories и атомарный symlink
-`/opt/endlessnet-relay/current`, сохраняя `/opt/endlessnet-relay/previous` как
-проверенный rollback state. Ошибка restart/health возвращает предыдущий release
-и прекращает rollout. На первом cutover playbook отдельно сохраняет и может
-восстановить старый combined Relay unit.
-
-Текущий production workflow валидирует ровно один Relay Coordinator и два Relay
-target: основной `relay-region-a-1` и резервный `relay-region-a-2` на `spb`.
-После идемпотентной установки Certbot/OpenSSL, но до изменения workload или
-Coordinator, выполняется application preflight WireGuard,
-WebPKI-сертификатов и renewal tooling. Публичные DNS-имена, Relay ID, overlay
-адреса и endpoint snapshot revision 2 проверяются как единая утверждённая
-топология.
+Relay публикует immutable artifact после собственных CI/E2E и не входит в server
+release set EndlessNet. Producer workflows не вызывают Infrastructure rollout.
+Оператор самостоятельно закрепляет артефакт и размещает продукт.
+EndlessNet Infrastructure владеет своей топологией, rollout и интеграционной
+приёмкой. Общая инструкция [self-hosting](systemd-deployment.md) принадлежит Relay.
 
 ## 14. Известные ограничения
 
@@ -424,3 +412,20 @@ WebPKI-сертификатов и renewal tooling. Публичные DNS-им�
 - readiness и метрики покрывают не все критические зависимости.
 
 Варианты закрытия этих ограничений описаны в [возможном будущем](future.md).
+
+## 15. Инварианты исправлений R2–R6
+
+- Exact peer identity извлекается из проверенного SVID, включая SPIFFE callback,
+  который не заполняет `VerifiedChains`; relay_id должен совпадать с сертификатом.
+- `--trust-domain`, `--coordinator-identity`, `--upstream-identity` задают единую
+  политику control/mesh/snapshot. Defaults сохранены, расширение доверия запрещено.
+- Release сохраняет неактивную строку и последний epoch. Acquire увеличивает epoch
+  атомарно; переполнение приводит к отказу. Старый release не меняет нового владельца.
+- Renewal не возобновляет expired/released session. Resolve проверяет обе аренды и boot.
+- Входящий stream требует boot из текущего snapshot; смена boot закрывает stream,
+  состояние проверяется повторно на каждом frame.
+- Heartbeat имеет deadline 5 секунд. Независимый watchdog ограничивает жизнь
+  экземпляра сроком instance lease плюс grace, затем выключает listener и mesh.
+- Local и remote overflow закрывают медленного получателя и учитываются одинаково.
+  Best-effort delivery, форматы credential и relay-v1 сохранены.
+- Credential expiry и stale cache проверяются после завершения upstream-вызова.

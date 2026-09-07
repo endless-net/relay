@@ -37,7 +37,9 @@ sha256sum -c dist/checksums.txt
 
 Для production следует использовать immutable artifact из утверждённого
 GitHub Release: production-изменения этого проекта проходят через pull request
-и guarded release/deploy workflows.
+и release workflow. Rollout выполняет оператор; для EndlessNet — Infrastructure.
+Relay не инициирует production deployment. Совместимый upstream и настраиваемые
+SPIFFE identities описаны в [контракте](upstream-contract.md).
 
 ## 2. Зависимости и внешние контракты
 
