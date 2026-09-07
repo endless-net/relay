@@ -143,7 +143,7 @@ func (s *Server) AuthorizePeer(ctx context.Context, request *relayv1.AuthorizePe
 	if err := s.authorizeRelayIdentity(ctx, request.GetRelayId()); err != nil {
 		return nil, err
 	}
-	if !canonicalRequired(request.GetBootId()) || !canonicalRequired(request.GetPeerId()) || request.GetSourceEpoch() <= 0 {
+	if !canonicalRequired(request.GetBootId()) || !canonicalRequired(request.GetPeerId()) || !canonicalRequired(request.GetPeerNetworkId()) || request.GetSourceEpoch() <= 0 {
 		return nil, status.Error(codes.InvalidArgument, "source session and peer identity are required")
 	}
 	credential, err := relayv1.CredentialToProtocol(request.GetCredential())
@@ -154,10 +154,10 @@ func (s *Server) AuthorizePeer(ctx context.Context, request *relayv1.AuthorizePe
 	if err != nil || source.RelayID != request.GetRelayId() || source.BootID != request.GetBootId() || source.Epoch != request.GetSourceEpoch() {
 		return nil, status.Error(codes.FailedPrecondition, "source relay session is fenced")
 	}
-	if err := s.Authorizer.AuthorizePeer(ctx, credential, request.GetPeerId()); err != nil {
+	if err := s.Authorizer.AuthorizePeer(ctx, credential, request.GetPeerNetworkId(), request.GetPeerId()); err != nil {
 		return nil, mapAuthorizationError(err)
 	}
-	destination, err := s.Store.ResolveSession(ctx, credential.NetworkID, request.GetPeerId(), time.Now().UTC())
+	destination, err := s.Store.ResolveSession(ctx, request.GetPeerNetworkId(), request.GetPeerId(), time.Now().UTC())
 	if err != nil {
 		return nil, status.Error(codes.NotFound, "relay peer is not connected")
 	}

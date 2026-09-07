@@ -32,7 +32,7 @@ func (allowAuthorizer) AuthorizeCredential(context.Context, protocolv1.Credentia
 	return nil
 }
 
-func (allowAuthorizer) AuthorizePeer(context.Context, protocolv1.Credential, string) error {
+func (allowAuthorizer) AuthorizePeer(context.Context, protocolv1.Credential, string, string) error {
 	return nil
 }
 

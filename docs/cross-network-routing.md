@@ -1,11 +1,15 @@
 # Cross-network peer routing work
 
-Status: draft implementation; not supported by the runtime yet.
+Status: draft implementation; end-to-end cross-network routing is not supported yet.
 
 The protobuf source now carries `peer_network_id` in control and upstream peer
 authorization requests, and `destination_network_id` in mesh frames. The existing
-mesh `network_id` identifies the source. These additions alone do not authorize
-cross-network traffic or change the active routing behavior.
+mesh `network_id` identifies the source. Control authorization now requires the
+destination network, forwards it to upstream, keys cached decisions by the full
+pair and resolves the destination session in that network. Tests distinguish
+same-named nodes in two networks and reject network/epoch substitutions.
+The dataplane control caller still addresses its source network; client-frame
+and mesh propagation are not complete. This draft is not ready to activate.
 
 Before this work can merge or release:
 

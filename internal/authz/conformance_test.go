@@ -77,7 +77,7 @@ func TestPublishedUpstreamRequestFixtures(t *testing.T) {
 			})
 			a := GRPCAuthorizer{Client: client}
 			if pair {
-				err = a.AuthorizePeer(context.Background(), credential, "fixture-target")
+				err = a.AuthorizePeer(context.Background(), credential, "fixture-target-network", "fixture-target")
 			} else {
 				err = a.AuthorizeCredential(context.Background(), credential)
 			}
@@ -141,7 +141,7 @@ func TestGRPCRejectsUnknownAuthorizationResponseFields(t *testing.T) {
 			a := GRPCAuthorizer{Client: client}
 			var err error
 			if pair {
-				err = a.AuthorizePeer(context.Background(), protocolv1.Credential{}, "peer")
+				err = a.AuthorizePeer(context.Background(), protocolv1.Credential{}, "network", "peer")
 			} else {
 				err = a.AuthorizeCredential(context.Background(), protocolv1.Credential{})
 			}

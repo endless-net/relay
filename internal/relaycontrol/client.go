@@ -151,7 +151,7 @@ func (c *Client) ReleaseSession(ctx context.Context, lease relay.SessionLease) e
 }
 
 func (c *Client) AuthorizePeer(ctx context.Context, credential protocolv1.Credential, sourceEpoch int64, peerID string) (relay.PeerRoute, error) {
-	response, err := c.Control.AuthorizePeer(ctx, &relayv1.AuthorizePeerRequest{RelayId: c.RelayID, BootId: c.BootID, Credential: relayv1.CredentialFromProtocol(credential), PeerId: peerID, SourceEpoch: sourceEpoch})
+	response, err := c.Control.AuthorizePeer(ctx, &relayv1.AuthorizePeerRequest{RelayId: c.RelayID, BootId: c.BootID, Credential: relayv1.CredentialFromProtocol(credential), PeerId: peerID, PeerNetworkId: credential.NetworkID, SourceEpoch: sourceEpoch})
 	if err != nil {
 		return relay.PeerRoute{}, mapPeerAuthorizationError(err)
 	}

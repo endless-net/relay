@@ -7,3 +7,4 @@ credential {
   signature: "non-credential-fixture"
 }
 peer_id: "fixture-target"
+peer_network_id: "fixture-target-network"
