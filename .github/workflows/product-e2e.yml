@@ -34,6 +34,38 @@ jobs:
           path: ${{ runner.temp }}/product-images
           retention-days: 7
 
+  storage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        env:
+          POSTGRES_DB: relay
+          POSTGRES_USER: relay
+          POSTGRES_PASSWORD: ephemeral-ci
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U relay" --health-interval 1s --health-timeout 3s --health-retries 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify PostgreSQL invariants
+        env:
+          E2E_POSTGRES_DSN: postgres://relay:ephemeral-ci@localhost:5432/relay?sslmode=disable
+        run: |
+          set -euo pipefail
+          go test -race -tags=integration -json -count=1 ./internal/store | tee storage-results.jsonl
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: product-storage
+          path: storage-results.jsonl
+          retention-days: 7
+          if-no-files-found: error
+
   scenarios:
     needs: images
     runs-on: ubuntu-latest

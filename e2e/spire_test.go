@@ -103,7 +103,7 @@ func (h *harness) startSPIRE(ctx context.Context) error {
 		if name == "relay-coordinator" {
 			path = "/service/relay-coordinator"
 		}
-		if _, err = command("entry", "create", "-parentID", agentID, "-spiffeID", "spiffe://"+h.trustDomain()+path, "-selector", "unix:uid:65532", "-ttl", "60"); err != nil {
+		if _, err = command("entry", "create", "-parentID", agentID, "-spiffeID", "spiffe://"+h.trustDomain()+path, "-selector", "unix:uid:65532", "-x509SVIDTTL", "60"); err != nil {
 			return err
 		}
 		if _, err = h.compose(ctx, "up", "-d", "agent-"+name); err != nil {

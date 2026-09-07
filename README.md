@@ -3,9 +3,11 @@
 EndlessNet Relay provides the TLS relay dataplane, Relay Coordinator, and
 active-active relay mesh used when peers cannot establish a direct path.
 
-The main EndlessNet control plane remains authoritative for networks, nodes,
-ACLs, credential revocation, and signing trust. Relay processes communicate
-with it only through the Relay Coordinator.
+Relay is a standalone public product. A compatible upstream owns networks,
+nodes, directed peer authorization and signing trust; Relay accesses it only
+through the [published upstream contract](docs/upstream-contract.md). EndlessNet
+integrates and operates this product, but its sources, database and production
+configuration are not required to build or test Relay.
 
 ## Documentation
 
@@ -40,10 +42,10 @@ go build ./cmd/...
 The hermetic multi-relay suite requires Docker with Compose:
 
 ```sh
-go test -tags=e2e -count=1 -timeout=5m ./e2e/...
+go test -tags=e2e -count=1 -timeout=15m ./e2e/...
 ```
 
-It starts PostgreSQL, a strict main-Coordinator mock, the Relay Coordinator,
+It starts PostgreSQL, an independently controlled contract upstream, SPIRE Server/Agents, the Relay Coordinator,
 and three Relay containers. Test credentials and PKI are ephemeral.
 
 ## Self-hosting
@@ -62,28 +64,15 @@ Self-hosted operators must provide:
 - a Relay Coordinator and PostgreSQL database;
 - TLS certificates for public Relay listeners;
 - SPIRE identities for internal mTLS;
-- a private WireGuard mesh between Relay nodes;
-- endpoint configuration and a compatible credential issuer.
+- network connectivity between mesh endpoints;
+- endpoint configuration, a compatible upstream and credential issuer.
 
-## Generic deployment workflow
+## Immutable releases and integration
 
-`.github/workflows/deploy-production.yml` deploys an existing immutable release
-from a standard GitHub-hosted runner. It contains no production inventory.
-
-Configure the protected `production` environment with:
-
-- `DEPLOY_INVENTORY_JSON`: Ansible inventory with `coordinator` and `relays`
-  groups;
-- `RELAY_COORDINATOR_ENV`, `RELAY_NODE_ENV`, and `RELAY_ENDPOINTS_JSON`:
-  runtime configuration;
-- `DEPLOY_SSH_PRIVATE_KEY` and `DEPLOY_KNOWN_HOSTS`;
-- `DEPLOY_USER`: optional remote user.
-
-The workflow validates its inputs without printing them, checks release
-provenance and checksums, preflights every target, deploys the Coordinator, and
-then rolls Relay nodes sequentially. Host rollback remains implemented by the
-Ansible playbook. Runner lifecycle, SPIRE operations, managed inventory, and
-infrastructure recovery remain outside this repository.
+Relay publishes immutable release artifacts after product CI/E2E. It does not
+initiate Infrastructure rollout and is not part of the EndlessNet server release
+set. Operators select a pinned artifact and deploy it using their own automation.
+EndlessNet Infrastructure owns its deployment and integration acceptance.
 
 Release archives contain binaries, service units, renewal helpers, license
 notices, and checksums. They never contain production environment files,
