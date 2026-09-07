@@ -55,7 +55,7 @@ image IDs to all matrix groups. Container dependencies are pinned by digest.
 The `verify` check succeeds only after static/unit checks and every
 product group succeed; branch protection remains enabled. The release workflow
 reuses the full CI workflow, including static/unit checks and product E2E, before
-publishing artifacts. Automatic checks run on pushes to `main`; release publication
+publishing artifacts. Automatic checks run on pull requests and pushes to `main`; release publication
 runs on new `vMAJOR.MINOR.PATCH` tags. CI and DCO can also be dispatched manually
 on a branch for additional verification. The soak is compiled only with the additional `extended` build tag; ordinary
 E2E runs do not silently skip it. Each regular group has a 20-minute job deadline.
