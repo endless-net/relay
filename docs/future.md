@@ -50,6 +50,8 @@ PostgreSQL, upstream authorization и trust bundle с разной критич�
 **Варианты.** Монотонный migration ledger, advisory lock, отдельный migration
 job, периодическая batch-очистка с метриками возраста/объёма. Сохраняются
 ограничения проекта: без `DEFAULT`, явного `NOT NULL` и PostgreSQL foreign keys.
+Очистка не должна уничтожать последний epoch пары network/node: released/expired
+сессия хранит fencing history, и новый acquire обязан продолжать её счётчик.
 
 ### F-05. Формализовать жизненный цикл ключей и сертификатов
 
