@@ -30,6 +30,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/status"
 )
 
 // External acceptance processes supply a real compatible upstream over stdin.
@@ -76,7 +77,17 @@ func TestExternalBackendDataplane(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	controlServer := grpc.NewServer(grpc.Creds(credentials.NewTLS(serverTLS)), grpc.UnaryInterceptor(relayv1.RejectUnknownUnaryServerInterceptor))
+	controlServer := grpc.NewServer(grpc.Creds(credentials.NewTLS(serverTLS)), grpc.ChainUnaryInterceptor(
+		relayv1.RejectUnknownUnaryServerInterceptor,
+		func(ctx context.Context, request any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+			response, err := handler(ctx, request)
+			if err != nil {
+				// Report only method and status; requests carry credentials.
+				t.Logf("Relay control rejected %s: %s", info.FullMethod, status.Code(err))
+			}
+			return response, err
+		},
+	))
 	relayv1.RegisterRelayControlServer(controlServer, &relaycoordinator.Server{Store: storage, Authorizer: authorizer})
 	defer controlServer.Stop()
 	go func() { _ = controlServer.Serve(listener) }()
