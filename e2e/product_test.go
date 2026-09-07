@@ -100,6 +100,9 @@ func TestProductProtocol(t *testing.T) {
 			var reply map[string]any
 			err = json.NewDecoder(conn).Decode(&reply)
 			conn.Close()
+			if timeout, ok := err.(net.Error); ok && timeout.Timeout() {
+				t.Fatal("malformed input was not rejected before deadline")
+			}
 			if err == nil && reply["type"] == protocolv1.MessageReady {
 				t.Fatal("malformed input accepted")
 			}
@@ -134,7 +137,11 @@ func TestProductProtocol(t *testing.T) {
 					case "signature":
 						credential.Signature = strings.Repeat("A", len(credential.Signature))
 					case "expired":
-						credential.ExpiresAt = time.Now().Add(-time.Second)
+						expired, err := protocolv1.Sign(suite.signingKey, testNetworkID, "node-a", time.Now().Add(-time.Second))
+						if err != nil {
+							t.Fatal(err)
+						}
+						m["credential"] = expired
 					case "unknown_key":
 						_, key, err := ed25519.GenerateKey(rand.Reader)
 						if err != nil {
