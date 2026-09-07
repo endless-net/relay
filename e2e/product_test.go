@@ -346,6 +346,18 @@ func TestProductFencing(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
+
+		address, err := suite.port(context.Background(), "relay-a", 9090)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, readyErr := (&http.Client{Timeout: 2 * time.Second}).Get("http://" + address + "/readyz")
+		if readyErr == nil {
+			response.Body.Close()
+			if response.StatusCode == 200 {
+				t.Fatal("fenced node remained ready")
+			}
+		}
 		if _, err := suite.compose(context.Background(), "unpause", "relay-coordinator"); err != nil {
 			t.Fatal(err)
 		}
@@ -428,6 +440,19 @@ func TestProductResources(t *testing.T) {
 			t.Fatal("stalled mesh did not reach bounded outbound capacity")
 		}
 		assertTransfer(t, a, c, []byte("other-peer-remains-available"))
+		readyAddress, err := suite.port(context.Background(), "relay-a", 9090)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := (&http.Client{Timeout: 2 * time.Second}).Get("http://" + readyAddress + "/readyz")
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != 200 {
+			t.Fatal("one failed mesh peer disabled node readiness")
+		}
+
 		proxyMode(t, "relay-b", "disconnect")
 		proxyMode(t, "relay-b", "")
 		// Backpressure can close the destination when buffered frames are released.
