@@ -108,7 +108,9 @@ func TestProductProtocol(t *testing.T) {
 			}
 		}
 		a, b := productClients(t, true)
-		if err := a.send("node-b", bytes.Repeat([]byte{1}, protocolv1.MaxFramePayloadBytes+1)); err != nil {
+		oversized := bytes.Repeat([]byte{1}, protocolv1.MaxFramePayloadBytes+1)
+		defer assertNoPayload(t, b, oversized, 200*time.Millisecond)
+		if err := a.send("node-b", oversized); err != nil {
 			t.Fatal(err)
 		}
 		deadline := time.Now().Add(3 * time.Second)
@@ -929,6 +931,7 @@ func TestProductAuthorizationControl(t *testing.T) {
 	// The exact pair was just primed: changing upstream does not bypass fresh cache.
 	assertTransfer(t, a, b, []byte("fresh-decision"))
 	assertEventuallyRejected(t, a, "node-b", []byte("changed-decision"), "relay peer is not allowed", 10*time.Second)
+	waitForTransfer(t, b, a, 5*time.Second) // The reverse directed pair remains allowed.
 	setUpstream(t, map[string]any{"config": allowed})
 	// Recovery must occur after the bounded negative decision, without a new session.
 	waitForTransfer(t, a, b, 5*time.Second)
