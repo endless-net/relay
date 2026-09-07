@@ -79,7 +79,7 @@ func (h *harness) startSPIRE(ctx context.Context) error {
 		return err
 	}
 	for _, name := range []string{"upstream", "relay-coordinator", "relay-a", "relay-b", "relay-c"} {
-		agentID := "spiffe://" + h.trustDomain() + "/spire/agent/" + name
+		agentID := "spiffe://" + h.trustDomain() + "/e2e/agent/" + name
 		raw, err := command("token", "generate", "-spiffeID", agentID, "-output", "json")
 		if err != nil {
 			return fmt.Errorf("generate ephemeral agent token: command failed")
