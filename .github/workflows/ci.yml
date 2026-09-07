@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  checks:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -54,3 +54,17 @@ jobs:
     uses: ./.github/workflows/product-e2e.yml
     with:
       extended: ${{ inputs.extended == true }}
+
+  verify:
+    if: always()
+    needs: [checks, product-e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every product verification group
+        env:
+          CHECKS_RESULT: ${{ needs.checks.result }}
+          E2E_RESULT: ${{ needs.product-e2e.result }}
+        run: |
+          test "$CHECKS_RESULT" = success
+          test "$E2E_RESULT" = success
