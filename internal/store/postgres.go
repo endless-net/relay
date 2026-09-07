@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"reflect"
 	"strings"
 	"time"
@@ -124,6 +125,9 @@ func (p *Postgres) AcquireSession(ctx context.Context, session Session, ttl time
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return Session{}, err
 	}
+	if epoch == math.MaxInt64 {
+		return Session{}, errors.New("session epoch exhausted")
+	}
 	epoch++
 	expires := now.Add(ttl)
 	_, err = tx.Exec(ctx, `INSERT INTO node_session_leases (network_id,node_id,relay_id,boot_id,epoch,lease_expires_at)
@@ -146,6 +150,7 @@ func (p *Postgres) RenewSession(ctx context.Context, session Session, ttl time.D
 	expires := now.Add(ttl)
 	result, err := p.pool.Exec(ctx, `UPDATE node_session_leases SET lease_expires_at=$1
 		WHERE network_id=$2 AND node_id=$3 AND relay_id=$4 AND boot_id=$5 AND epoch=$6
+		AND lease_expires_at>$7
 		AND EXISTS (SELECT 1 FROM relay_instances WHERE relay_id=$4 AND boot_id=$5 AND lease_expires_at>$7)`,
 		expires, session.NetworkID, session.NodeID, session.RelayID, session.BootID, session.Epoch, now)
 	if err != nil {
@@ -159,7 +164,7 @@ func (p *Postgres) RenewSession(ctx context.Context, session Session, ttl time.D
 }
 
 func (p *Postgres) ReleaseSession(ctx context.Context, session Session) error {
-	_, err := p.pool.Exec(ctx, `DELETE FROM node_session_leases WHERE network_id=$1 AND node_id=$2 AND relay_id=$3 AND boot_id=$4 AND epoch=$5`, session.NetworkID, session.NodeID, session.RelayID, session.BootID, session.Epoch)
+	_, err := p.pool.Exec(ctx, `UPDATE node_session_leases SET lease_expires_at=TIMESTAMPTZ '1970-01-01 00:00:00+00' WHERE network_id=$1 AND node_id=$2 AND relay_id=$3 AND boot_id=$4 AND epoch=$5`, session.NetworkID, session.NodeID, session.RelayID, session.BootID, session.Epoch)
 	return err
 }
 
@@ -168,7 +173,7 @@ func (p *Postgres) ResolveSession(ctx context.Context, networkID, nodeID string,
 	if !canonicalRequired(networkID) || !canonicalRequired(nodeID) {
 		return Session{}, errors.New("relay session identity is required")
 	}
-	err := p.pool.QueryRow(ctx, `SELECT network_id,node_id,relay_id,boot_id,epoch,lease_expires_at FROM node_session_leases WHERE network_id=$1 AND node_id=$2 AND lease_expires_at>$3`, networkID, nodeID, now.UTC()).Scan(&session.NetworkID, &session.NodeID, &session.RelayID, &session.BootID, &session.Epoch, &session.LeaseExpires)
+	err := p.pool.QueryRow(ctx, `SELECT s.network_id,s.node_id,s.relay_id,s.boot_id,s.epoch,s.lease_expires_at FROM node_session_leases s JOIN relay_instances i ON i.relay_id=s.relay_id AND i.boot_id=s.boot_id WHERE s.network_id=$1 AND s.node_id=$2 AND s.lease_expires_at>$3 AND i.lease_expires_at>$3`, networkID, nodeID, now.UTC()).Scan(&session.NetworkID, &session.NodeID, &session.RelayID, &session.BootID, &session.Epoch, &session.LeaseExpires)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Session{}, ErrSessionMissing
 	}

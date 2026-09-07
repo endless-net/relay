@@ -57,6 +57,7 @@ func TestManagersForwardOneHopAcrossRelays(t *testing.T) {
 	go serverB.Serve(listenerB)
 	defer serverB.Stop()
 
+	managerB.UpdatePeers([]*relayv1.RelayInstance{{RelayId: "relay-a", BootId: "boot-a", MeshAddr: "127.0.0.1:1"}})
 	managerA.UpdatePeers([]*relayv1.RelayInstance{{RelayId: "relay-b", BootId: "boot-b", MeshAddr: listenerB.Addr().String()}})
 	deadline := time.NewTimer(10 * time.Second)
 	defer deadline.Stop()

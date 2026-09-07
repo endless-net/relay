@@ -60,13 +60,7 @@ func newWorkloadRuntimeWithSource(source x509Source, expectedIdentity string) (*
 	if err != nil {
 		return nil, fmt.Errorf("parse expected SPIFFE workload identity: %w", err)
 	}
-	trustDomain, err := spiffeid.TrustDomainFromString(DefaultTrustDomain)
-	if err != nil {
-		return nil, err
-	}
-	if expected.TrustDomain() != trustDomain {
-		return nil, fmt.Errorf("SPIFFE workload identity must belong to trust domain %q", DefaultTrustDomain)
-	}
+	trustDomain := expected.TrustDomain()
 	svid, err := source.GetX509SVID()
 	if err != nil {
 		return nil, fmt.Errorf("fetch SPIFFE X.509-SVID: %w", err)

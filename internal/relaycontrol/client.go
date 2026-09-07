@@ -49,10 +49,34 @@ func Dial(address string, tlsConfig *tls.Config) (*grpc.ClientConn, error) {
 }
 
 func (c *Client) Run(ctx context.Context) error {
+	workerCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	result := make(chan error, 1)
+	go func() { result <- c.run(workerCtx) }()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-result:
+			return err
+		case <-ticker.C:
+			expiry := c.currentLeaseExpiry()
+			if !expiry.IsZero() && !time.Now().Before(expiry.Add(c.fencingGrace())) {
+				return errors.New("relay instance lease expired")
+			}
+		}
+	}
+}
+func (c *Client) Ready() bool { return time.Now().Before(c.currentLeaseExpiry()) }
+func (c *Client) run(ctx context.Context) error {
 	if c.Control == nil || c.Peers == nil || !canonicalRequired(c.RelayID) || !canonicalRequired(c.BootID) || !canonicalRequired(c.MeshAddr) {
 		return errors.New("relay control client is not configured")
 	}
-	response, err := c.Control.RegisterInstance(ctx, &relayv1.RegisterInstanceRequest{RelayId: c.RelayID, BootId: c.BootID, MeshAddr: c.MeshAddr})
+	registerCtx, cancelRegister := context.WithTimeout(ctx, 5*time.Second)
+	response, err := c.Control.RegisterInstance(registerCtx, &relayv1.RegisterInstanceRequest{RelayId: c.RelayID, BootId: c.BootID, MeshAddr: c.MeshAddr})
+	cancelRegister()
 	if err != nil {
 		return err
 	}
@@ -69,7 +93,9 @@ func (c *Client) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			response, err := c.Control.HeartbeatInstance(ctx, &relayv1.HeartbeatInstanceRequest{RelayId: c.RelayID, BootId: c.BootID})
+			heartbeatCtx, cancelHeartbeat := context.WithTimeout(ctx, 5*time.Second)
+			response, err := c.Control.HeartbeatInstance(heartbeatCtx, &relayv1.HeartbeatInstanceRequest{RelayId: c.RelayID, BootId: c.BootID})
+			cancelHeartbeat()
 			if err == nil {
 				err = rejectResponse(response)
 			}

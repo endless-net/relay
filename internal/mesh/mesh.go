@@ -11,6 +11,7 @@ import (
 
 	relayv1 "github.com/endless-net/relay/api/relay/v1"
 	"github.com/endless-net/relay/internal/relay"
+	"github.com/endless-net/relay/internal/tlsconfig"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
@@ -21,11 +22,12 @@ type DeliverFunc func(networkID, fromNodeID, toNodeID string, destinationEpoch i
 type Manager struct {
 	relayv1.UnimplementedRelayMeshServer
 
-	RelayID   string
-	BootID    string
-	TLSConfig *tls.Config
-	Deliver   DeliverFunc
-	QueueSize int
+	IdentityPolicy tlsconfig.IdentityPolicy
+	RelayID        string
+	BootID         string
+	TLSConfig      *tls.Config
+	Deliver        DeliverFunc
+	QueueSize      int
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -34,6 +36,7 @@ type Manager struct {
 }
 
 type peerConnection struct {
+	ctx      context.Context
 	instance *relayv1.RelayInstance
 	send     chan *relayv1.MeshMessage
 	cancel   context.CancelFunc
@@ -81,7 +84,7 @@ func (m *Manager) UpdatePeers(peers []*relayv1.RelayInstance) {
 	}
 	for relayID, instance := range desired {
 		peerCtx, cancel := context.WithCancel(m.ctx)
-		connection := &peerConnection{instance: instance, send: make(chan *relayv1.MeshMessage, m.queueSize()), cancel: cancel}
+		connection := &peerConnection{ctx: peerCtx, instance: instance, send: make(chan *relayv1.MeshMessage, m.queueSize()), cancel: cancel}
 		m.peers[relayID] = connection
 		go m.runPeer(peerCtx, connection)
 	}
@@ -121,19 +124,28 @@ func (m *Manager) Connect(stream relayv1.RelayMesh_ConnectServer) error {
 	if hello == nil || hello.GetRelayId() == "" || hello.GetBootId() == "" {
 		return errors.New("relay mesh hello is required")
 	}
-	if err := requireRelayIdentity(stream.Context(), hello.GetRelayId()); err != nil {
+	if err := requireRelayIdentityWithPolicy(stream.Context(), hello.GetRelayId(), m.IdentityPolicy); err != nil {
 		return err
+	}
+	m.mu.RLock()
+	incoming := m.peers[hello.GetRelayId()]
+	m.mu.RUnlock()
+	if incoming == nil || incoming.instance.GetBootId() != hello.GetBootId() {
+		return relay.ErrDestinationFenced
 	}
 	if err := stream.Send(meshHello(m.RelayID, m.BootID)); err != nil {
 		return err
 	}
 	for {
-		message, err := stream.Recv()
+		message, err := receiveCurrentPeer(incoming.ctx, stream)
 		if err != nil {
 			return err
 		}
 		if err := validateMeshMessage(message); err != nil {
 			return err
+		}
+		if incoming.ctx.Err() != nil {
+			return relay.ErrDestinationFenced
 		}
 		switch body := message.GetBody().(type) {
 		case *relayv1.MeshMessage_Frame:
@@ -181,18 +193,18 @@ func (m *Manager) connectPeer(ctx context.Context, connection *peerConnection) e
 	}
 	tlsConfig := m.TLSConfig.Clone()
 	previousVerify := tlsConfig.VerifyConnection
-	expectedURI := "spiffe://endlessnet.ru/relay/" + connection.instance.GetRelayId()
+	expectedID, err := m.IdentityPolicy.RelayIdentity(connection.instance.GetRelayId())
+	if err != nil {
+		return err
+	}
 	tlsConfig.VerifyConnection = func(state tls.ConnectionState) error {
 		if previousVerify != nil {
 			if err := previousVerify(state); err != nil {
 				return err
 			}
 		}
-		if len(state.VerifiedChains) == 0 || len(state.VerifiedChains[0]) == 0 {
-			return errors.New("verified relay mesh certificate is required")
-		}
-		certificate := state.VerifiedChains[0][0]
-		if len(certificate.URIs) != 1 || certificate.URIs[0] == nil || certificate.URIs[0].String() != expectedURI {
+		id, err := tlsconfig.PeerID(state)
+		if err != nil || id != expectedID {
 			return errors.New("relay mesh server certificate identity mismatch")
 		}
 		return nil
@@ -260,19 +272,23 @@ func (m *Manager) connectPeer(ctx context.Context, connection *peerConnection) e
 }
 
 func requireRelayIdentity(ctx context.Context, relayID string) error {
+	return requireRelayIdentityWithPolicy(ctx, relayID, tlsconfig.IdentityPolicy{})
+}
+func requireRelayIdentityWithPolicy(ctx context.Context, relayID string, policy tlsconfig.IdentityPolicy) error {
 	peerInfo, ok := peer.FromContext(ctx)
 	if !ok || peerInfo.AuthInfo == nil {
 		return errors.New("verified relay mesh certificate is required")
 	}
 	tlsInfo, ok := peerInfo.AuthInfo.(credentials.TLSInfo)
-	if !ok || len(tlsInfo.State.VerifiedChains) == 0 || len(tlsInfo.State.VerifiedChains[0]) == 0 {
+	if !ok {
 		return errors.New("verified relay mesh certificate is required")
 	}
-	certificate := tlsInfo.State.VerifiedChains[0][0]
-	want := "spiffe://endlessnet.ru/relay/" + relayID
-	if len(certificate.URIs) != 1 || certificate.URIs[0] == nil || certificate.URIs[0].String() != want {
+	id, err := tlsconfig.PeerID(tlsInfo.State)
+	expected, expectedErr := policy.RelayIdentity(relayID)
+	if err != nil || expectedErr != nil || id != expected {
 		return errors.New("relay mesh certificate identity mismatch")
 	}
+
 	return nil
 }
 
@@ -310,4 +326,21 @@ func validateMeshMessage(message *relayv1.MeshMessage) error {
 
 func canonicalRequired(value string) bool {
 	return value != "" && value == strings.TrimSpace(value)
+}
+
+func receiveCurrentPeer(ctx context.Context, stream relayv1.RelayMesh_ConnectServer) (*relayv1.MeshMessage, error) {
+	type received struct {
+		message *relayv1.MeshMessage
+		err     error
+	}
+	result := make(chan received, 1)
+	go func() { message, err := stream.Recv(); result <- received{message, err} }()
+	select {
+	case <-ctx.Done():
+		return nil, relay.ErrDestinationFenced
+	case <-stream.Context().Done():
+		return nil, stream.Context().Err()
+	case value := <-result:
+		return value.message, value.err
+	}
 }

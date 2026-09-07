@@ -36,7 +36,7 @@ func TestCacheUsesPositiveStaleWindowOnlyOnUpstreamFailure(t *testing.T) {
 	upstream := &stubAuthorizer{}
 	cache := NewCache(upstream)
 	cache.Now = func() time.Time { return now }
-	credential := protocolv1.Credential{NetworkID: "network", NodeID: "node"}
+	credential := protocolv1.Credential{NetworkID: "network", NodeID: "node", ExpiresAt: now.Add(time.Hour)}
 	if err := cache.AuthorizeCredential(context.Background(), credential); err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestCacheDoesNotUseNegativeStaleWindow(t *testing.T) {
 	upstream := &stubAuthorizer{err: ErrDenied}
 	cache := NewCache(upstream)
 	cache.Now = func() time.Time { return now }
-	credential := protocolv1.Credential{NetworkID: "network", NodeID: "node"}
+	credential := protocolv1.Credential{NetworkID: "network", NodeID: "node", ExpiresAt: now.Add(time.Hour)}
 	if err := cache.AuthorizeCredential(context.Background(), credential); !errors.Is(err, ErrDenied) {
 		t.Fatalf("negative authorization error = %v", err)
 	}

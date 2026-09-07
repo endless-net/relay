@@ -33,6 +33,9 @@ var errRelayOutboundQueueFull = errors.New("relay outbound queue is full")
 var errRelayLineTooLarge = errors.New("relay line is too large")
 
 type Server struct {
+	listener            net.Listener
+	listening           atomic.Bool
+	fenced              atomic.Bool
 	Addr                string
 	TrustBundleProvider func() (protocolv1.SigningTrustBundle, error)
 	TLSConfig           *tls.Config
@@ -93,8 +96,17 @@ func NewServer(config ServerConfig) (*Server, error) {
 }
 
 func (s *Server) Fence() {
+	s.fenced.Store(true)
+	s.metrics().setDraining(true)
+	s.mu.Lock()
+	listener := s.listener
+	s.mu.Unlock()
+	if listener != nil {
+		_ = listener.Close()
+	}
 	s.closeSessions()
 }
+func (s *Server) Ready() bool { return s.listening.Load() && !s.fenced.Load() }
 
 type session struct {
 	networkID                 string
@@ -132,6 +144,14 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	tlsConfig := s.TLSConfig.Clone()
 	listener = tls.NewListener(listener, tlsConfig)
 	defer listener.Close()
+	s.mu.Lock()
+	s.listener = listener
+	s.mu.Unlock()
+	s.listening.Store(true)
+	defer s.listening.Store(false)
+	if s.fenced.Load() {
+		return errors.New("relay is fenced")
+	}
 	defer s.closeSessions()
 	go func() {
 		<-ctx.Done()
@@ -253,6 +273,9 @@ func (s *Server) handleConn(ctx context.Context, conn net.Conn) {
 	sess := s.newSession(ctx, conn, writer, auth.Credential, heartbeatIntervalFromAuth(auth.HeartbeatIntervalMS))
 	sess.lease = lease
 	s.addSession(sess)
+	if s.fenced.Load() {
+		sess.close()
+	}
 	s.metrics().recordSessionStart()
 	defer func() {
 		s.removeSession(sess)
@@ -703,6 +726,7 @@ func (s *Server) DeliverRemote(networkID, fromNodeID, toNodeID string, destinati
 	}
 	if err := peer.enqueueFrame(newServerFrame(fromNodeID, payload)); err != nil {
 		s.metrics().recordDrop("slow_consumer")
+		peer.close()
 		return err
 	}
 	s.metrics().recordOutboundFrame(len(payload))

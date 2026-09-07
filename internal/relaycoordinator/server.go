@@ -11,6 +11,7 @@ import (
 	relayv1 "github.com/endless-net/relay/api/relay/v1"
 	"github.com/endless-net/relay/internal/authz"
 	"github.com/endless-net/relay/internal/store"
+	"github.com/endless-net/relay/internal/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/spiffe/go-spiffe/v2/spiffetls"
 	"google.golang.org/grpc/codes"
@@ -27,10 +28,11 @@ const (
 type Server struct {
 	relayv1.UnimplementedRelayControlServer
 
-	Store       store.Store
-	Authorizer  authz.Authorizer
-	InstanceTTL time.Duration
-	SessionTTL  time.Duration
+	IdentityPolicy tlsconfig.IdentityPolicy
+	Store          store.Store
+	Authorizer     authz.Authorizer
+	InstanceTTL    time.Duration
+	SessionTTL     time.Duration
 }
 
 func (s *Server) RegisterInstance(ctx context.Context, request *relayv1.RegisterInstanceRequest) (*relayv1.RegisterInstanceResponse, error) {
@@ -162,7 +164,7 @@ func (s *Server) EndpointHandler() http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		if !isExactHTTPPeer(r, "spiffe://endlessnet.ru/service/coordinator") {
+		if !isExactHTTPPeer(r, s.IdentityPolicy.Effective().UpstreamID) {
 			http.Error(w, "verified coordinator identity required", http.StatusForbidden)
 			return
 		}
@@ -187,7 +189,7 @@ func (s *Server) authorizeRelayIdentity(ctx context.Context, requestedRelayID st
 	if !canonicalRequired(requestedRelayID) {
 		return status.Error(codes.InvalidArgument, "relay_id is required")
 	}
-	relayID, err := relayIDFromPeer(ctx)
+	relayID, err := relayIDFromPeerWithPolicy(ctx, s.IdentityPolicy)
 	if err != nil {
 		return status.Error(codes.Unauthenticated, err.Error())
 	}
@@ -198,6 +200,9 @@ func (s *Server) authorizeRelayIdentity(ctx context.Context, requestedRelayID st
 }
 
 func relayIDFromPeer(ctx context.Context) (string, error) {
+	return relayIDFromPeerWithPolicy(ctx, tlsconfig.IdentityPolicy{})
+}
+func relayIDFromPeerWithPolicy(ctx context.Context, policy tlsconfig.IdentityPolicy) (string, error) {
 	peerInfo, ok := peer.FromContext(ctx)
 	if !ok || peerInfo.AuthInfo == nil {
 		return "", errors.New("verified relay certificate is required")
@@ -210,7 +215,7 @@ func relayIDFromPeer(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", errors.New("verified relay certificate is required")
 	}
-	const prefix = "spiffe://endlessnet.ru/relay/"
+	prefix := "spiffe://" + policy.Effective().TrustDomain + "/relay/"
 	raw := peerID.String()
 	if !strings.HasPrefix(raw, prefix) || !canonicalRequired(strings.TrimPrefix(raw, prefix)) {
 		return "", errors.New("relay certificate URI SAN is invalid")
