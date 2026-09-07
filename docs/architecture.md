@@ -324,7 +324,7 @@ path. Plaintext и standalone fallback отсутствуют.
 | --- | --- |
 | Перезапуск Relay | Новый `boot_id`; старый процесс fence-ится, клиенты переподключаются |
 | Миграция узла на другой Relay | Новый `epoch`; старый владелец не может renew или принять mesh frame |
-| Потеря mesh stream | Peer помечается недоступным; reconnect с backoff от 1 до 10 секунд |
+| Потеря mesh stream | Peer помечается недоступным; reconnect с backoff от 1 до 16 секунд |
 | Переполнение очереди mesh | Исходный Relay возвращает клиенту ошибку, если enqueue не состоялся локально |
 | Отказ доставки на удалённом Relay | Mesh остаётся fire-and-forget; исходный Relay не получает end-to-end подтверждения удалённой доставки |
 | Отказ Relay Coordinator | Новые авторизации не проходят; session renewal закрывает активные сессии; instance lease ограничивает жизнь процесса |
