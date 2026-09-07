@@ -159,7 +159,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 		_ = listener.Close()
 		s.closeSessions()
 	}()
-	slog.Info("starting endlessnet relay server", "addr", listener.Addr().String(), "tls", true)
+	slog.Info("starting relay server", "addr", listener.Addr().String(), "tls", true)
 	for {
 		conn, err := listener.Accept()
 		if err != nil {

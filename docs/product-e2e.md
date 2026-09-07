@@ -2,7 +2,8 @@
 
 Relay owns this suite. It requires Docker Compose on a GitHub-hosted
 `ubuntu-latest` runner and builds production binaries from one source SHA.
-No sources or CI from Coordinator, Signing, Client or System Tests are used.
+No sources or CI from an integrator's upstream, credential issuer, client or
+acceptance suite are used.
 An unavailable runner capability or a broken harness fails setup.
 
 The Compose project includes three Relay instances, Relay Coordinator,
@@ -66,7 +67,7 @@ Compose projects; network faults are commanded through a bounded-buffer proxy.
 Acceptance recorded on 2026-09-07:
 
 - [Final server CI and extended](https://github.com/endless-net/relay/actions/runs/34121728292): source `3c3b7ad68d3785d49bf58204ffcd8aaf1f48db7e`; all seven regular groups passed, with **44 leaf E2E scenarios**. This includes rejection of plaintext upstream configuration before storage/listeners start.
-- The same run contains the 30-minute extended recovery job and publishes its conclusion, duration and completed-cycle events. The dated [architecture evidence](https://github.com/endless-net/architecture/blob/main/docs/ru/evidence/2026-09-07-relay-independent-product.md) records the final outcome. The subsequent smoke-utility identity configuration and documentation changes do not change server package sources/dependencies or Dockerfiles; the tested source SHA and image IDs are recorded explicitly.
+- The same run passed the extended recovery test in **1802.61 seconds**, completing **347 recovery cycles**, using the same source SHA and image archive as its regular groups.
 - Earlier acceptance remains available: [initial regular CI](https://github.com/endless-net/relay/actions/runs/34119731480) (43 leaf scenarios) and [initial extended](https://github.com/endless-net/relay/actions/runs/34117312163) (1801.94 seconds, 351 recovery cycles). Those runs preceded the additional HTTPS-origin startup guard.
 
 | Regular group | Leaf scenarios | Go package elapsed, seconds |
@@ -95,6 +96,6 @@ Initial failures remain in Actions history, including
 and the [first soak](https://github.com/endless-net/relay/actions/runs/34116137250).
 These were separate failed runs followed by corrective commits, not automatic retries.
 
-Product evidence does not certify the actual EndlessNet Coordinator's upstream
-compatibility (R1), Infrastructure integration or production rollout. Those
-remain externally owned under architecture D-032.
+Product evidence verifies Relay against its published contracts. Each integrator
+separately validates its upstream compatibility, infrastructure integration and
+production deployment.

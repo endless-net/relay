@@ -1,231 +1,227 @@
-# Архитектура EndlessNet Relay
+# Relay architecture
 
-Статус: архитектурная модель самостоятельного продукта, обновлена 7 сентября 2026 года.
-Проверка реализации и CI фиксируется отдельно; принятие модели не означает завершения приёмки.
+Status: standalone product architecture, updated September 7, 2026.
+Implementation and CI evidence are recorded separately; accepting an architecture
+does not by itself complete validation.
 
-## 1. Назначение и границы
+## 1. Purpose and boundaries
 
-EndlessNet Relay передаёт непрозрачные кадры между узлами одной авторизованной сети,
-когда прямое соединение между ними недоступно или не выбрано. Репозиторий
-владеет двумя production-компонентами:
+Relay forwards opaque frames between nodes in one authorized network when a
+direct connection is unavailable or not selected. This repository owns two
+production components:
 
-- **Relay** — публичный data plane, клиентские сессии и mesh-соединения с
-  другими relay;
-- **Relay Coordinator** — control plane relay-кластера: регистрация
-  экземпляров, аренда и fencing сессий, поиск текущего владельца узла,
-  авторизация и публикация списка публичных endpoint.
+- **Relay**: the public dataplane, client sessions and mesh connections to other
+  Relay instances.
+- **Relay Coordinator**: the cluster control plane, including instance registration,
+  session leases and fencing, current node-owner lookup, authorization and public
+  endpoint publication.
 
-Relay является самостоятельным публичным продуктом согласно
-[D-032](https://github.com/endless-net/architecture/blob/main/docs/ru/decisions/d-032.md).
-Совместимый upstream владеет сетями, узлами, направленными ACL и signing trust.
-Relay Coordinator обращается к нему через [опубликованный контракт](upstream-contract.md)
-и хранит короткоживущий кэш. EndlessNet Coordinator является интегратором;
-его текущая совместимость (R1) требует отдельной проверки в его репозитории.
-Исходники, БД, CI и production-конфигурация других компонентов не нужны продукту.
+Relay is a standalone public product. A compatible upstream owns networks, nodes,
+directed ACLs and signing trust. Relay Coordinator accesses it through the
+[published contract](upstream-contract.md) and maintains a short-lived cache.
+Integrator implementations require their own conformance validation. Building and
+testing Relay does not require an integrator's sources, database, CI or production
+configuration.
 
-Сервис намеренно не является:
+The product deliberately does not provide:
 
-- хранилищем или брокером с гарантированной доставкой;
-- источником истины для ACL и членства узлов;
-- обработчиком содержимого пользовательского payload;
-- общим L7-прокси.
+- A store or broker with guaranteed delivery.
+- The source of truth for ACLs and node membership.
+- Processing of user payload contents.
+- A general-purpose L7 proxy.
 
-## 2. Контекст системы
+## 2. System context
 
 ```mermaid
 flowchart LR
-    A["Независимые клиенты"] -->|"relay-v1, TLS 1.3 + credential"| RA
+    A["Independent clients"] -->|"relay-v1, TLS 1.3 + credential"| RA
     A -->|"relay-v1, TLS 1.3 + credential"| RB
-    subgraph Product["Публичный продукт Relay"]
+    subgraph Product["Public Relay product"]
       RA["Relay A"] <-->|"RelayMesh gRPC, mTLS"| RB["Relay B"]
       RA -->|"RelayControl gRPC, mTLS"| RC["Relay Coordinator"]
       RB -->|"RelayControl gRPC, mTLS"| RC
-      RC -->|"leases, registry, endpoints"| PG[("PostgreSQL продукта")]
+      RC -->|"leases, registry, endpoints"| PG[("Product PostgreSQL")]
     end
-    RC -->|"AuthZ + trust, SPIFFE mTLS"| MC["Совместимый upstream / EndlessNet Coordinator"]
-    MC -->|"Чтение endpoint snapshot, exact identity"| RC
-    Product -->|"Immutable release"| Infra["Инфраструктура оператора"]
+    RC -->|"AuthZ + trust, SPIFFE mTLS"| UP["Compatible upstream"]
+    UP -->|"Read endpoint snapshot, exact identity"| RC
+    Product -->|"Immutable release"| Infra["Operator infrastructure"]
 ```
 
-Payload проходит только через Relay и relay mesh. Relay Coordinator и главный
-Coordinator получают credential, идентификаторы сети и узлов, но не получают
-пользовательский payload.
+Payloads pass only through Relay and the relay mesh. Relay Coordinator and the
+upstream receive credentials and network/node identifiers, but no user payloads.
 
-## 3. Компоненты
+## 3. Components
 
-| Компонент | Ответственность | Состояние |
+| Component | Responsibility | State |
 | --- | --- | --- |
-| `endlessnet-relay` | Публичный TLS listener, проверка credential, клиентские сессии, локальная и mesh-доставка, admission control, метрики | Сессии и очереди только в памяти |
-| `endlessnet-relay-coordinator` | Регистрация relay, leases, fencing, маршрутизация, ACL, trust bundle, endpoint snapshot | PostgreSQL и короткоживущий кэш авторизации |
-| Главный Coordinator | Сети, узлы, ACL, revocation, подписывающие ключи | Внешняя зависимость |
-| PostgreSQL | Реестр relay, текущий владелец сессии узла, публичные endpoint | Выделенная база Relay Coordinator |
-| `endlessnet-relay-smoke` | Проверка публичного TLS relay и HTTPS health Relay Coordinator | Запускается workflow или оператором |
+| `endlessnet-relay` | Public TLS listener, credential verification, client sessions, local/mesh delivery, admission control and metrics | Sessions and queues in memory only |
+| `endlessnet-relay-coordinator` | Instance registration, leases, fencing, routing, ACL checks, trust bundle and endpoint snapshot | PostgreSQL and a short-lived authorization cache |
+| Compatible upstream | Networks, nodes, ACLs, revocation and signing keys | External dependency |
+| PostgreSQL | Relay registry, current node-session owner and public endpoints | Dedicated Relay Coordinator database |
+| `endlessnet-relay-smoke` | Public Relay TLS and Relay Coordinator HTTPS health checks | Invoked by an operator or their automation |
 
-## 4. Сетевые интерфейсы
+## 4. Network interfaces
 
-| Интерфейс | По умолчанию | Защита | Назначение |
+| Interface | Default | Protection | Purpose |
 | --- | --- | --- | --- |
-| Relay public | `:9443` | TLS 1.3 | Клиентский JSON-lines протокол v1 |
-| Relay mesh | `:9444` | TLS 1.3 + взаимная аутентификация | Двунаправленный gRPC stream между relay |
-| Relay Coordinator gRPC | `:9445` | TLS 1.3 + взаимная аутентификация | `RelayControl` для relay |
-| Relay Coordinator HTTPS | `127.0.0.1:7078` | TLS 1.3 + SPIFFE mTLS | Endpoint snapshot; доступен главному Coordinator на том же хосте |
-| Relay health/metrics | `127.0.0.1:9190` | Loopback | `/healthz`, `/readyz` и `/metrics` |
-| Relay Coordinator health | `127.0.0.1:9191` | Loopback | `/healthz` и `/readyz` для systemd/deployment |
+| Relay public | `:9443` | TLS 1.3 | Client JSON-lines protocol v1 |
+| Relay mesh | `:9444` | TLS 1.3 with mutual authentication | Bidirectional gRPC streams between Relay instances |
+| Relay Coordinator gRPC | `:9445` | TLS 1.3 with mutual authentication | `RelayControl` for Relay instances |
+| Relay Coordinator HTTPS | `127.0.0.1:7078` | TLS 1.3 with SPIFFE mTLS | Endpoint snapshot for the authorized upstream caller; loopback by default |
+| Relay health/metrics | `127.0.0.1:9190` | Loopback | `/healthz`, `/readyz` and `/metrics` |
+| Relay Coordinator health | `127.0.0.1:9191` | Loopback | `/healthz` and `/readyz` for systemd and deployment checks |
 
-Если адрес метрик Relay выносится за loopback, его защиту должен обеспечить
-сетевой периметр или локальный reverse proxy.
+If Relay metrics bind outside loopback, protect them with the network perimeter
+or a local reverse proxy.
 
-## 5. Основные потоки
+## 5. Main flows
 
-### 5.1. Запуск Relay
+### 5.1. Relay startup
 
-1. Процесс получает публичный сертификат через systemd credential и
-   динамическую workload identity через локальный SPIRE Workload API.
-2. Для запуска обязательны стабильный `relay_id`, рекламируемый `mesh_addr` и
-   адрес Relay Coordinator. `boot_id` уникален для процесса и генерируется,
-   если не задан явно.
-3. Relay по mTLS регистрирует пару `(relay_id, boot_id)` в Relay Coordinator.
-4. В ответ получает lease экземпляра, актуальный trust bundle и список живых
-   relay peers.
-5. Только после получения валидного trust bundle запускаются публичный
-   listener и mesh server.
-6. Каждые 5 секунд Relay посылает heartbeat. Обновлённый список peers меняет
-   набор исходящих mesh streams.
-7. Если lease экземпляра истёк и связь не восстановилась в течение fencing
-   grace, Relay закрывает все клиентские сессии.
+1. The process obtains the public certificate through a systemd credential and
+   its dynamic workload identity through the local SPIRE Workload API.
+2. Startup requires a stable `relay_id`, advertised `mesh_addr` and Relay
+   Coordinator address. `boot_id` is unique to the process and generated unless
+   explicitly configured.
+3. Relay registers `(relay_id, boot_id)` with Relay Coordinator over mTLS.
+4. The response supplies an instance lease, current trust bundle and live peers.
+5. The public listener and mesh server start only after a valid trust bundle is available.
+6. Relay sends a heartbeat every 5 seconds. Updated peers change the outgoing
+   mesh stream set.
+7. If the instance lease expires and connectivity does not recover within the
+   fencing grace period, Relay disables readiness and the listener, and closes
+   client sessions and mesh connections.
 
-Lease экземпляра по умолчанию действует 15 секунд. Heartbeat идёт каждые
-5 секунд, дополнительный fencing grace также равен 5 секундам.
+The default instance lease is 15 seconds. Heartbeats run every 5 seconds with a
+5-second request deadline. An independent watchdog enforces the lease and the
+additional 5-second fencing grace period.
 
-### 5.2. Установка клиентской сессии
+### 5.2. Client session establishment
 
-1. Клиент устанавливает TLS 1.3 соединение с публичным Relay.
-2. Первой строкой отправляет `client_hello` с `protocol_version = 1`,
-   Ed25519 credential и, при необходимости, интервалом server heartbeat.
-3. Relay строго декодирует JSON, отвергает неизвестные поля, лишнее JSON-значение,
-   неверный тип сообщения или версию.
-4. Relay проверяет подпись и срок credential по trust bundle.
-5. Relay запрашивает у Relay Coordinator авторизацию credential и lease сессии.
-6. Relay Coordinator сверяет credential с главным Coordinator и атомарно
-   увеличивает `epoch` текущей пары `(network_id, node_id)` в PostgreSQL.
-7. Relay возвращает `ready`. Предыдущая сессия того же узла становится
-   неавторитетной и будет закрыта при следующей проверке lease.
+1. The client opens a TLS 1.3 connection to a public Relay.
+2. Its first line is `client_hello`, containing `protocol_version = 1`, an Ed25519
+   credential and an optional server heartbeat interval.
+3. Relay strictly decodes JSON and rejects unknown fields, extra JSON values,
+   incorrect message types and unsupported versions.
+4. Relay verifies the credential signature and expiry against the trust bundle.
+5. Relay requests credential authorization and a session lease from Relay Coordinator.
+6. Relay Coordinator validates the credential through the upstream and atomically
+   increases the epoch for `(network_id, node_id)` in PostgreSQL.
+7. Relay responds with `ready`. The previous session for that node loses authority
+   and closes on its next lease check.
 
-Session lease по умолчанию действует 15 секунд и обновляется Relay каждые
-5 секунд. Ошибка renewal закрывает соответствующую клиентскую сессию.
+The default session lease is 15 seconds and Relay renews it every 5 seconds.
+Renewal errors close the affected client session.
 
-### 5.3. Передача кадра
+### 5.3. Frame delivery
 
 ```mermaid
 sequenceDiagram
-    participant A as Узел A
+    participant A as Node A
     participant RA as Relay A
     participant RC as Relay Coordinator
-    participant MC as Главный Coordinator
+    participant UP as Upstream
     participant PG as PostgreSQL
     participant RB as Relay B
-    participant B as Узел B
+    participant B as Node B
 
     A->>RA: client_frame(peer_id=B, payload)
     RA->>RC: AuthorizePeer(credential, source_epoch, B)
-    RC->>PG: проверить source lease и найти destination lease
-    RC->>MC: проверить ACL (через cache)
+    RC->>PG: Check source lease and resolve destination lease
+    RC->>UP: Check ACL through cache
     RC-->>RA: relay_id, boot_id, destination_epoch
-    alt B подключён к Relay A
+    alt B is connected to Relay A
         RA->>B: server_frame(from_node_id=A, payload)
-    else B подключён к Relay B
+    else B is connected to Relay B
         RA->>RB: Mesh frame + destination_epoch
-        RB->>RB: сверить локальный epoch
+        RB->>RB: Check local epoch
         RB->>B: server_frame(from_node_id=A, payload)
     end
 ```
 
-Каждый кадр заново проходит проверку маршрута и ACL. Положительное решение
-главного Coordinator кэшируется Relay Coordinator на 5 секунд и может быть
-использовано до 30 секунд только при ошибке upstream. Отрицательное решение
-кэшируется на 1 секунду и никогда не используется как stale-разрешение.
+Every frame triggers a new route and ACL check. Relay Coordinator caches positive
+upstream decisions for 5 seconds and can use them for up to 30 seconds only on
+upstream errors. Negative decisions are cached for 1 second and never provide
+stale authorization.
 
-Кадр доставляется локально либо ровно через один mesh hop. `destination_epoch`
-не позволяет старому процессу или старой сессии принять кадр после миграции
-узла.
+Frames are delivered locally or through exactly one mesh hop. `destination_epoch`
+prevents an old process or session from accepting frames after node migration.
 
-### 5.4. Переподключение и fencing
+### 5.4. Reconnection and fencing
 
-Идентичность владельца сессии состоит из:
+A session owner's identity is:
 
 ```text
 (network_id, node_id, relay_id, boot_id, epoch)
 ```
 
-- новый процесс с тем же `relay_id`, но другим `boot_id`, блокирует heartbeat
-  старого процесса;
-- новый `AcquireSession` для того же `(network_id, node_id)` увеличивает
-  `epoch`;
-- renewal разрешён только точному текущему владельцу;
-- mesh-доставка разрешена только при совпадении `destination_epoch`;
-- `ReleaseSession` деактивирует запись при полном совпадении владельца,
-  сохраняя последний epoch; более новую сессию старый release не изменяет.
+- A new process with the same `relay_id` and a different `boot_id` blocks the old
+  process from renewing its instance lease.
+- A new `AcquireSession` for `(network_id, node_id)` increases `epoch`.
+- Renewal is allowed only for the exact current owner with an unexpired session.
+- Mesh delivery requires the matching `destination_epoch` and current peer boot.
+- `ReleaseSession` deactivates a row only when the complete owner matches and
+  retains its last epoch. A delayed release cannot change a newer session.
 
-Так устраняется split-brain на уровне сессии без распределённой блокировки в
-самих Relay.
+This prevents session-level split-brain without distributed locking between Relay
+processes themselves.
 
-## 6. Контракты
+## 6. Contracts
 
-### 6.1. Публичный relay-v1
+### 6.1. Public relay-v1
 
-Формат — одно JSON-сообщение на строку. Для всех сообщений обязательны
-`type` и `protocol_version = 1`.
+The format is one JSON message per line. Every message requires `type` and
+`protocol_version = 1`.
 
-| Направление | Сообщение | Назначение |
+| Direction | Message | Purpose |
 | --- | --- | --- |
-| Клиент → Relay | `client_hello` | Аутентификация и параметры heartbeat |
-| Relay → клиент | `ready` | Сессия принята |
-| Клиент → Relay | `client_frame` | `peer_id` и непрозрачный payload |
-| Relay → клиент | `server_frame` | `from_node_id` и непрозрачный payload |
-| Relay → клиент | `heartbeat` | Поддержание активности по запросу клиента |
-| Relay → клиент | `error` | Отказ протокола, ACL, маршрута или ресурса |
+| Client to Relay | `client_hello` | Authentication and heartbeat settings |
+| Relay to client | `ready` | Session accepted |
+| Client to Relay | `client_frame` | `peer_id` and opaque payload |
+| Relay to client | `server_frame` | `from_node_id` and opaque payload |
+| Relay to client | `heartbeat` | Keepalive requested by the client |
+| Relay to client | `error` | Protocol, ACL, route or resource rejection |
 
-Payload обязателен и ограничен 64 KiB до JSON/base64-кодирования. Relay не
-анализирует, не сохраняет и не журналирует его содержимое.
+Payloads are required and limited to 64 KiB before JSON/base64 encoding. Relay
+does not inspect, persist or log their contents.
 
-Семантика доставки — best effort через ограниченные очереди в памяти:
+Delivery is best effort through bounded in-memory queues:
 
-- нет подтверждения доставки конечным узлом;
-- нет повторной отправки после разрыва соединения;
-- нет durable-очереди;
-- медленный получатель отключается, когда его очередь заполнена;
-- порядок сохраняется внутри одного активного socket writer, но не обещается
-  между переподключениями или сменой Relay.
+- No acknowledgment from the destination node.
+- No retransmission after a disconnect.
+- No durable queue.
+- A slow receiver is disconnected when its queue fills.
+- Ordering is preserved within one active socket writer, but not across
+  reconnections or Relay changes.
 
-### 6.2. Credential и trust bundle
+### 6.2. Credentials and trust bundles
 
-- алгоритм credential: `ed25519-relay-credential-v3`;
-- подписываемая схема: версия 3;
-- идентификатор ключа: SHA-256 от Ed25519 public key;
-- credential связывает `network_id`, `node_id`, `key_id` и `expires_at`;
-- trust bundle имеет версию 1, активный ключ и набор доверенных ключей;
-- окна `not_before`/`not_after` позволяют безопасное перекрытие ключей при
-  ротации.
+- Credential algorithm: `ed25519-relay-credential-v3`.
+- Signed schema: version 3.
+- Key ID: SHA-256 of the Ed25519 public key.
+- Credentials bind `network_id`, `node_id`, `key_id` and `expires_at`.
+- Trust bundles use version 1 and contain an active key and a set of trusted keys.
+- `not_before` and `not_after` windows support safe key overlap during rotation.
 
-Relay принимает credential только при известном ключе, валидной подписи,
-неистёкшем сроке и положительном решении control plane.
+Relay accepts credentials only with a known key, valid signature, unexpired
+lifetime and positive control-plane authorization.
 
-### 6.3. Внутренний gRPC v1
+### 6.3. Internal gRPC v1
 
-Пакет `endlessnet.relay.v1` содержит:
+Package `endlessnet.relay.v1` contains:
 
 - `RelayControl`: `RegisterInstance`, `HeartbeatInstance`, `AcquireSession`,
-  `RenewSession`, `ReleaseSession`, `AuthorizePeer`;
-- `RelayMesh.Connect`: двунаправленный stream с versioned `oneof` сообщениями
-  `hello`, `frame`, `ping`, `pong`.
+  `RenewSession`, `ReleaseSession` and `AuthorizePeer`.
+- `RelayMesh.Connect`: a bidirectional stream with versioned `oneof` messages
+  `hello`, `frame`, `ping` and `pong`.
 
-Неверная версия, пустой `oneof` или неизвестное protobuf-поле приводит к
-закрытию RPC/stream. Серверные interceptors рекурсивно проверяют запросы, а
-control и mesh клиенты так же проверяют все ответы.
+An invalid version, empty `oneof` or unknown protobuf field closes the RPC or
+stream. Server interceptors recursively validate requests; control and mesh
+clients validate every response in the same way.
 
-### 6.4. Endpoint snapshot
+### 6.4. Endpoint snapshots
 
-Relay Coordinator загружает при старте строгий JSON следующего вида:
+Relay Coordinator loads strict JSON at startup:
 
 ```json
 {
@@ -242,195 +238,188 @@ Relay Coordinator загружает при старте строгий JSON с�
 }
 ```
 
-Версия должна быть положительной и не может двигаться назад относительно
-сохранённого snapshot. Дублирующиеся ID и неполные endpoint запрещены.
-Snapshot доступен по `GET /internal/relay-control/v1/endpoints` только workload
-с точной настроенной upstream identity (default
-`spiffe://endlessnet.ru/service/coordinator`); token-only
-запросы отклоняются.
+The version must be positive and cannot move backwards relative to the persisted
+snapshot. Duplicate IDs and incomplete endpoints are rejected. The snapshot is
+available through `GET /internal/relay-control/v1/endpoints` only to the exact
+configured upstream identity, defaulting to
+`spiffe://endlessnet.ru/service/coordinator`. Token-only requests are rejected.
 
-## 7. Данные
+## 7. Data
 
-| Таблица | Ключ | Назначение | Срок жизни |
+| Table | Key | Purpose | Lifetime |
 | --- | --- | --- | --- |
-| `relay_instances` | `relay_id` | Текущий boot, mesh address и lease Relay | Логически ограничен `lease_expires_at` |
-| `node_session_leases` | `(network_id, node_id)` | Единственный текущий владелец и epoch сессии узла | Логически ограничен `lease_expires_at` |
-| `platform_relay_snapshot` | `snapshot_key` | Версия текущего snapshot, включая пустой | До замены snapshot |
-| `platform_relay_endpoints` | `endpoint_id` | Содержимое текущего snapshot публичных Relay | До замены snapshot |
+| `relay_instances` | `relay_id` | Current boot, mesh address and Relay lease | Logically bounded by `lease_expires_at` |
+| `node_session_leases` | `(network_id, node_id)` | Current node-session owner and retained epoch | Active ownership bounded by `lease_expires_at`; epoch retained |
+| `platform_relay_snapshot` | `snapshot_key` | Current snapshot version, including an empty snapshot | Until snapshot replacement |
+| `platform_relay_endpoints` | `endpoint_id` | Current public Relay endpoint contents | Until snapshot replacement |
 
-Истёкшие строки не участвуют в маршрутизации, но сейчас не удаляются отдельным
-фоновым процессом. Миграции встроены в бинарник и применяются при старте.
-Согласно правилам проекта новые миграции не должны добавлять `DEFAULT`, явный
-`NOT NULL` или PostgreSQL foreign keys.
+Expired rows do not participate in routing and are not currently deleted by a
+background task. Migrations are embedded in the binary and applied at startup.
+New migrations must not add `DEFAULT`, explicit `NOT NULL` or PostgreSQL foreign
+keys. Any future cleanup must preserve the last session epoch.
 
-## 8. Безопасность
+## 8. Security
 
-### 8.1. Каналы и workload identity
+### 8.1. Channels and workload identity
 
-Ниже указаны defaults EndlessNet. Оператор задаёт собственный trust domain
-и service identities согласно [контракту](upstream-contract.md). Это не добавляет
-альтернативные identities в allowlist; политика заменяется целиком.
+The identities below are defaults. Operators configure their own trust domain and
+service identities as described in the [upstream contract](upstream-contract.md).
+Configuration replaces the policy; it does not add alternative identities to an allowlist.
 
-- публичный Relay всегда использует TLS 1.3;
-- Relay → Relay Coordinator использует mTLS; клиентский сертификат обязан
-  содержать единственный URI SAN `spiffe://endlessnet.ru/relay/{relay_id}`;
-- relay mesh использует mTLS и точное соответствие того же URI SAN заявленному
-  `relay_id` с обеих сторон;
-- Relay Coordinator → главный Coordinator использует клиентскую identity
-  `spiffe://endlessnet.ru/service/relay-coordinator` и ожидает серверную identity
-  `spiffe://endlessnet.ru/service/coordinator`;
-- Relay ожидает у Relay Coordinator серверную identity
-  `spiffe://endlessnet.ru/service/relay-coordinator`;
-- SPIRE выдаёт SVID только dedicated systemd units по точным selectors; shared
-  service token и статические internal certificate/key файлы не используются.
+- Public Relay listeners always use TLS 1.3.
+- Relay to Relay Coordinator uses mTLS. The client certificate must contain the
+  single URI SAN `spiffe://endlessnet.ru/relay/{relay_id}` under the default domain.
+- Mesh uses mTLS and requires the same URI SAN to match the claimed `relay_id`
+  on both sides.
+- Relay Coordinator to upstream uses client identity
+  `spiffe://endlessnet.ru/service/relay-coordinator` and expects server identity
+  `spiffe://endlessnet.ru/service/coordinator` by default.
+- Relay expects server identity `spiffe://endlessnet.ru/service/relay-coordinator`
+  from Relay Coordinator by default.
+- In the supplied systemd deployment, SPIRE issues SVIDs to dedicated units using
+  exact selectors. Shared service tokens and static internal certificate/key
+  files are not used by production workloads.
 
-Production Relay и тестовая fixture всегда запускают настоящий TLS 1.3 data
-path. Plaintext и standalone fallback отсутствуют.
+Production Relay and E2E fixtures use the actual TLS 1.3 data path. There is no
+plaintext or unauthenticated fallback.
 
-### 8.2. Fail-closed поведение
+### 8.2. Fail-closed behavior
 
-- неизвестная версия, тип или поле публичного протокола отклоняется;
-- недоступность trust bundle не позволяет открыть публичный listener;
-- недоступность Relay Coordinator не позволяет авторизовать новый кадр;
-- потеря session lease закрывает сессию;
-- потеря instance lease в итоге fence-ит весь Relay;
-- неизвестный или устаревший mesh peer/boot/epoch отклоняется;
-- ACL denial не раскрывает клиенту внутреннюю причину решения.
+- Unknown public protocol versions, types and fields are rejected.
+- An unavailable trust bundle prevents the public listener from opening.
+- An unavailable Relay Coordinator prevents authorization of new frames.
+- Loss of a session lease closes that session.
+- Loss of an instance lease eventually fences the entire Relay process.
+- Unknown or stale mesh peers, boots and epochs are rejected.
+- ACL denials do not expose the internal decision reason to clients.
 
-Допущение по доступности существует только внутри кэша Relay Coordinator:
-недавнее положительное решение может жить до 30 секунд при временной ошибке
-главного Coordinator. Это ограниченное stale-while-error окно, а не
-неограниченный fail-open.
+The availability allowance exists only inside the Relay Coordinator cache: a
+recent positive decision can remain usable for up to 30 seconds during temporary
+upstream errors. This is a bounded stale-while-error window, not unlimited fail-open.
 
-## 9. Ограничение ресурсов
+## 9. Resource limits
 
-| Механизм | Значение по умолчанию | Реакция |
+| Mechanism | Default | Response |
 | --- | --- | --- |
-| Все клиентские соединения | 4096 на процесс | Новое соединение закрывается до запуска goroutine |
-| Соединения от одного source | 32 | Новое соединение закрывается |
-| Одновременная аутентификация | 128 | Load shedding без дополнительной TLS-записи |
-| Неаутентифицированное соединение | timeout 10 секунд | Ошибка и закрытие |
-| Очередь клиенту | 64 кадра | Медленный клиент отключается |
-| Mesh-очередь на peer | 256 сообщений | Новый кадр отклоняется |
-| Payload | 64 KiB | Кадр отклоняется |
-| Входящая полоса сессии | Не ограничена по умолчанию | При включённом лимите нарушитель отключается |
+| All client connections | 4096 per process | Close a new connection before starting a goroutine |
+| Connections from one source | 32 | Close the new connection |
+| Concurrent authentication | 128 | Shed load without an additional TLS record |
+| Unauthenticated connection | 10-second timeout | Error and close |
+| Client queue | 64 frames | Disconnect the slow client |
+| Mesh queue per peer | 256 messages | Reject the new frame |
+| Payload | 64 KiB | Reject the frame |
+| Session ingress bandwidth | Unlimited by default | Disconnect a client exceeding an enabled limit |
 
-Лимиты соединений и аутентификации общие для всех listeners одного процесса.
-Полосовой лимит — простой секундный window на одну клиентскую сессию.
+Connection and authentication limits apply across all listeners in one process.
+Bandwidth limiting uses a simple one-second window per client session.
 
-## 10. Отказы и восстановление
+## 10. Failures and recovery
 
-| Событие | Текущее поведение |
+| Event | Current behavior |
 | --- | --- |
-| Перезапуск Relay | Новый `boot_id`; старый процесс fence-ится, клиенты переподключаются |
-| Миграция узла на другой Relay | Новый `epoch`; старый владелец не может renew или принять mesh frame |
-| Потеря mesh stream | Peer помечается недоступным; reconnect с backoff от 1 до 16 секунд |
-| Переполнение очереди mesh | Исходный Relay возвращает клиенту ошибку, если enqueue не состоялся локально |
-| Отказ доставки на удалённом Relay | Mesh остаётся fire-and-forget; исходный Relay не получает end-to-end подтверждения удалённой доставки |
-| Отказ Relay Coordinator | Новые авторизации не проходят; session renewal закрывает активные сессии; instance lease ограничивает жизнь процесса |
-| Отказ главного Coordinator | Работает только ограниченный положительный stale cache; после окна авторизация закрывается |
-| Отказ PostgreSQL | Control RPC и readiness Relay Coordinator перестают быть успешными |
-| SIGTERM | Relay прекращает приём и закрывает сессии/mesh; graceful gRPC shutdown ограничен 5 секундами, затем Stop |
+| Relay restart | New `boot_id`; stale process is fenced and clients reconnect |
+| Node migration to another Relay | New `epoch`; the old owner cannot renew or accept mesh frames |
+| Mesh stream loss | Peer becomes unavailable; reconnect backs off from 1 to 16 seconds |
+| Mesh queue overflow | Source Relay returns a client error if local enqueue fails |
+| Remote delivery failure | Mesh remains fire-and-forget; no end-to-end remote delivery acknowledgment reaches the source Relay |
+| Relay Coordinator outage | New authorizations fail; session renewal closes active sessions; the instance lease bounds process lifetime |
+| Upstream outage | Only bounded positive stale caching remains available; authorization fails after that window |
+| PostgreSQL outage | Control RPCs and Relay Coordinator readiness fail |
+| SIGTERM | Relay stops accepting connections and closes sessions/mesh; graceful gRPC shutdown is bounded to 5 seconds, then forced to stop |
 
-Автономный E2E поднимает PostgreSQL, управляемый upstream, SPIRE Server/Agents,
-Relay Coordinator и три Relay из одного SHA. Используются production binaries,
-настоящий Workload API и независимые сетевые клиенты. GitHub-hosted CI разделён
-на verify, storage и группы protocol/auth, SPIFFE/mesh, fencing/recovery,
-resources/lifecycle; отдельный запуск проверяет пользовательский trust domain.
-Отсутствие рабочего стенда — ошибка setup. Ручной extended run длится 30 минут.
-Результат отдельного запуска не подтверждает интеграцию основного Coordinator.
+Autonomous E2E starts PostgreSQL, a controlled upstream, SPIRE Server/Agents,
+Relay Coordinator and three Relay instances from one source SHA. It uses production
+binaries, the real Workload API and independent network clients. GitHub-hosted CI
+separates verification, storage and protocol/auth, SPIFFE/mesh, fencing/recovery,
+resources/lifecycle, snapshot and trust-bootstrap groups. A separate group uses a
+custom trust domain. A broken harness fails setup. A manual extended run exercises
+recovery for 30 minutes. Product results do not certify an integrator's upstream.
 
-## 11. Наблюдаемость
+## 11. Observability
 
-Relay пишет структурированные JSON-логи в stderr и отдаёт Prometheus text
-format на `/metrics`. Основные группы метрик:
+Relay writes structured JSON logs to stderr and exposes Prometheus text metrics
+at `/metrics`. Main metric groups include:
 
-- активные/всего соединения и причины admission rejection;
-- активные аутентификации;
-- активные/всего/revoked сессии;
-- входящие и исходящие кадры и байты;
-- drops по причинам `invalid`, `no_peer`, `write_failed`, `slow_consumer`,
-  `bandwidth`, `acl`;
-- heartbeat и draining state.
+- Active/total connections and admission rejection reasons.
+- Active authentications.
+- Active/total/revoked sessions.
+- Inbound/outbound frames and bytes.
+- Drops by `invalid`, `no_peer`, `write_failed`, `slow_consumer`, `bandwidth` and `acl`.
+- Heartbeats and draining state.
 
-Идентификаторы и содержимое payload в метрики не попадают.
+Metrics contain neither payload contents nor node identifiers.
 
-Текущая семантика probes:
+Current probe semantics:
 
-- Relay `/healthz` подтверждает только работу локального HTTP server;
-- Relay `/readyz` требует listener, действующий instance lease, пригодный активный
-  signing key и отсутствие fencing/draining; отказ одного mesh peer не отключает узел;
-- Relay Coordinator `/healthz` является liveness;
-- Relay Coordinator `/readyz` проверяет чтение endpoint snapshot из БД, но не
-  доступность главного Coordinator, trust bundle или способность обслужить
-  полный control flow.
+- Relay `/healthz` confirms only that the local HTTP server responds.
+- Relay `/readyz` requires a listener, valid instance lease, usable active signing
+  key and no fencing/draining. One failed mesh peer does not disable the whole node.
+- Relay Coordinator `/healthz` is a liveness check.
+- Relay Coordinator `/readyz` checks database endpoint snapshot reads, not upstream
+  availability, trust bundles or the entire control flow.
 
-Отдельных метрик Relay Coordinator, mesh-соединений и latency control RPC пока
-нет.
+Dedicated Relay Coordinator, mesh-connection and control-RPC latency metrics are
+not yet provided.
 
-## 12. Конфигурация
+## 12. Configuration
 
 ### 12.1. Relay
 
-Обязательная production-конфигурация:
+Required production configuration:
 
-- `ENDLESSNET_RELAY_ID` / `--relay-id`;
-- `ENDLESSNET_RELAY_MESH_ADDR` / `--mesh-addr`;
-- `ENDLESSNET_RELAY_COORDINATOR_ADDR` / `--relay-coordinator-addr`;
-- публичные certificate/key;
-- локальный SPIRE Workload API (штатно
-  `unix:///run/spire/sockets/agent.sock`).
+- `ENDLESSNET_RELAY_ID` / `--relay-id`.
+- `ENDLESSNET_RELAY_MESH_ADDR` / `--mesh-addr`.
+- `ENDLESSNET_RELAY_COORDINATOR_ADDR` / `--relay-coordinator-addr`.
+- Public certificate and key.
+- Local SPIRE Workload API, normally `unix:///run/spire/sockets/agent.sock`.
 
-Дополнительно задаются public/mesh/metrics listen addresses, `boot_id`, admission
-limits и per-session bandwidth limit. Флаги имеют приоритет над environment
-variables. Bandwidth limit и admission limits сейчас задаются только флагами.
+Optional settings include public/mesh/metrics listen addresses, `boot_id`, admission
+limits and per-session bandwidth limits. Flags override environment variables.
+Bandwidth and admission limits currently use flags only.
 
 ### 12.2. Relay Coordinator
 
-Обязательны:
+Required configuration:
 
-- DSN выделенного PostgreSQL;
-- HTTPS URL главного Coordinator;
-- путь к versioned endpoint snapshot;
-- локальный SPIRE Workload API.
+- Dedicated PostgreSQL DSN.
+- Upstream HTTPS origin.
+- Path to a versioned endpoint snapshot.
+- Local SPIRE Workload API.
 
-Endpoint snapshot читается только при старте; hot reload сейчас отсутствует.
+Endpoint snapshots are read only at startup; hot reload is not implemented.
 
-## 13. Выпуск и размещение
+## 13. Releases and deployment
 
-Relay публикует immutable artifact после собственных CI/E2E и не входит в server
-release set EndlessNet. Producer workflows не вызывают Infrastructure rollout.
-Оператор самостоятельно закрепляет артефакт и размещает продукт.
-EndlessNet Infrastructure владеет своей топологией, rollout и интеграционной
-приёмкой. Общая инструкция [self-hosting](systemd-deployment.md) принадлежит Relay.
+Relay publishes immutable artifacts after its own CI/E2E. Release workflows do not
+initiate production rollout. Operators pin artifacts and own their topology,
+deployment, rollback and integration acceptance. The general
+[self-hosting guide](systemd-deployment.md) belongs to Relay.
 
-## 14. Известные ограничения
+## 14. Known limitations
 
-- один активный Relay Coordinator process является точкой отказа control plane;
-- полный mesh требует O(N²) streams;
-- каждый кадр синхронно зависит от `AuthorizePeer`, пусть и с upstream cache;
-- очереди и доставка не durable, end-to-end acknowledgment отсутствует;
-- удалённая mesh-доставка не имеет end-to-end acknowledgment;
-- endpoint snapshot меняется только через перезапуск Relay Coordinator;
-- startup migrations не имеют отдельного журнала версий или распределённой
-  блокировки;
-- readiness и метрики покрывают не все критические зависимости.
+- One active Relay Coordinator process is a control-plane failure point.
+- Full mesh requires O(N²) streams.
+- Every frame synchronously depends on `AuthorizePeer`, even with upstream caching.
+- Queues and delivery are not durable, and remote mesh delivery has no end-to-end acknowledgment.
+- Endpoint changes require a Relay Coordinator restart.
+- Startup migrations have no separate version ledger or distributed lock.
+- Readiness and metrics do not cover every critical dependency.
 
-Варианты закрытия этих ограничений описаны в [возможном будущем](future.md).
+Options for addressing these limits are described in [future directions](future.md).
 
-## 15. Инварианты исправлений R2–R6
+## 15. Runtime invariants
 
-- Exact peer identity извлекается из проверенного SVID, включая SPIFFE callback,
-  который не заполняет `VerifiedChains`; relay_id должен совпадать с сертификатом.
-- `--trust-domain`, `--coordinator-identity`, `--upstream-identity` задают единую
-  политику control/mesh/snapshot. Defaults сохранены, расширение доверия запрещено.
-- Release сохраняет неактивную строку и последний epoch. Acquire увеличивает epoch
-  атомарно; переполнение приводит к отказу. Старый release не меняет нового владельца.
-- Renewal не возобновляет expired/released session. Resolve проверяет обе аренды и boot.
-- Входящий stream требует boot из текущего snapshot; смена boot закрывает stream,
-  состояние проверяется повторно на каждом frame.
-- Heartbeat имеет deadline 5 секунд. Независимый watchdog ограничивает жизнь
-  экземпляра сроком instance lease плюс grace, затем выключает listener и mesh.
-- Local и remote overflow закрывают медленного получателя и учитываются одинаково.
-  Best-effort delivery, форматы credential и relay-v1 сохранены.
-- Credential expiry и stale cache проверяются после завершения upstream-вызова.
+- Exact peer identity is extracted from an authenticated SVID, including SPIFFE
+  callbacks that do not populate `VerifiedChains`; `relay_id` must match the certificate.
+- `--trust-domain`, `--coordinator-identity` and `--upstream-identity` define one
+  control/mesh/snapshot policy. Configuration cannot automatically broaden trust.
+- Release retains an inactive row and its last epoch. Acquire increments the epoch
+  atomically; overflow fails. Delayed release cannot change a new owner.
+- Renewal cannot revive expired/released sessions. Resolve checks both leases and boot.
+- Incoming streams require a boot from the current peer snapshot. Boot changes
+  close the stream, and each frame rechecks its state.
+- Heartbeats have a 5-second deadline. An independent watchdog bounds instance
+  lifetime by the lease plus grace period, then disables the listener and mesh.
+- Local and remote overflow disconnect slow receivers and use the same accounting.
+  Delivery remains best effort with the published credential and relay-v1 formats.
+- Credential expiry and stale cache eligibility are checked after upstream calls finish.

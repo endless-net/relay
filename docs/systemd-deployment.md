@@ -1,13 +1,13 @@
-# Развёртывание EndlessNet Relay под systemd
+# Deploying Relay with systemd
 
-Эта инструкция описывает ручную установку одного Relay Coordinator и одного
-или нескольких Relay-узлов из release-архива. Архив одинаков для обеих ролей и
-не содержит production runtime-конфигурацию, реальную endpoint topology,
-сертификаты, ключи или SPIRE registration entries.
+This guide describes manual installation of one Relay Coordinator and one or more
+Relay nodes from a release archive. Both roles use the same archive. It contains
+no production runtime configuration, actual endpoint topology, certificates, keys
+or SPIRE registration entries.
 
-## 1. Что находится в артефакте
+## 1. Artifact contents
 
-Для каждой поддерживаемой архитектуры создаётся архив:
+An archive is built for each supported architecture:
 
 ```text
 endlessnet-relay_vX.Y.Z_linux_amd64.tar.gz
@@ -15,108 +15,104 @@ endlessnet-relay_vX.Y.Z_linux_arm64.tar.gz
 checksums.txt
 ```
 
-Внутри архива находятся:
+Each archive contains:
 
-- `endlessnet-relay` — публичный dataplane и relay mesh;
-- `endlessnet-relay-coordinator` — control plane relay-кластера;
-- `endlessnet-relay-smoke` — внешняя проверка TLS и Coordinator health;
-- systemd units и helpers для обновления публичного сертификата;
-- примеры `coordinator.env`, `relay.env`, `relay-instance.env` и
-  `endpoints.json`;
-- лицензии, build metadata и эта инструкция.
+- `endlessnet-relay`: the public dataplane and relay mesh.
+- `endlessnet-relay-coordinator`: the relay cluster control plane.
+- `endlessnet-relay-smoke`: external TLS and Coordinator health checks.
+- Systemd units and public certificate renewal helpers.
+- Example `coordinator.env`, `relay.env`, `relay-instance.env` and `endpoints.json` files.
+- Licenses, build metadata and this guide.
 
-Бинарники статические (`CGO_ENABLED=0`), поэтому Go и системные shared libraries
-на целевых серверах не нужны.
+Binaries are static (`CGO_ENABLED=0`); target servers do not need Go or system shared libraries.
 
-Собрать архивы локально:
+Build archives locally:
 
 ```bash
 bash scripts/build-release.sh v1.1.3 dist
 sha256sum -c dist/checksums.txt
 ```
 
-Для production следует использовать immutable artifact из утверждённого
-GitHub Release: production-изменения этого проекта проходят через pull request
-и release workflow. Rollout выполняет оператор; для EndlessNet — Infrastructure.
-Relay не инициирует production deployment. Совместимый upstream и настраиваемые
-SPIFFE identities описаны в [контракте](upstream-contract.md).
+For production, select an immutable artifact from an approved GitHub Release.
+Changes pass through pull requests and the release workflow. Operators execute
+rollouts; Relay does not initiate production deployment. The
+[upstream contract](upstream-contract.md) describes compatible upstreams and
+configurable SPIFFE identities.
 
-## 2. Зависимости и внешние контракты
+## 2. Dependencies and external contracts
 
-### Общие для всех серверов
+### Required on all servers
 
-- Linux `amd64` или `arm64`, systemd и стандартные утилиты `tar`, `install`,
-  `sha256sum`, `curl`;
-- отдельный системный пользователь и группа `endlessnet-relay`;
-- настроенный `wg-quick@wg0.service`: имеющиеся unit-файлы требуют именно
-  интерфейс `wg0`;
-- локальный `spire-agent.service`, сокет Workload API
-  `/run/spire/sockets/agent.sock` и группа `spire-workload`;
-- синхронизированное время и рабочий DNS.
+- Linux `amd64` or `arm64`, systemd, and standard `tar`, `install`, `sha256sum` and `curl` tools.
+- A dedicated `endlessnet-relay` system user and group.
+- A configured `wg-quick@wg0.service`; the supplied units require the `wg0` interface.
+- A local `spire-agent.service`, Workload API socket at
+  `/run/spire/sockets/agent.sock`, and the `spire-workload` group.
+- Synchronized clocks and working DNS.
 
-Unit-файлы используют современные systemd sandboxing directives и
-`LoadCredential`. Перед установкой их следует проверить на выбранном
-дистрибутиве командой `systemd-analyze verify`. Существующий deployment
-поддерживает Debian-family hosts.
+The supplied units use modern systemd sandboxing directives and `LoadCredential`.
+Validate them on the chosen distribution with `systemd-analyze verify` before
+installation. The supplied deployment setup targets Debian-family hosts.
 
-SPIRE Server/Agent и reconciliation workload entries управляются внешним
-infrastructure-контуром, а не этим репозиторием. До запуска сервиса он должен
-выдать следующие точные identities:
+The operator manages SPIRE Server/Agent and workload-entry reconciliation outside
+this repository. Before starting services, provision exact identities matching
+the configured policy. The defaults are:
 
-| Процесс | Обязательная SPIFFE ID |
+| Process | Default SPIFFE ID |
 | --- | --- |
 | Relay Coordinator | `spiffe://endlessnet.ru/service/relay-coordinator` |
-| Relay с ID `<relay-id>` | `spiffe://endlessnet.ru/relay/<relay-id>` |
-| Основной Coordinator | `spiffe://endlessnet.ru/service/coordinator` |
+| Relay with ID `<relay-id>` | `spiffe://endlessnet.ru/relay/<relay-id>` |
+| Compatible upstream | `spiffe://endlessnet.ru/service/coordinator` |
 
-Identity Relay должна точно совпадать с `ENDLESSNET_RELAY_ID`. Общая identity
-для нескольких unit-файлов недопустима. Все внутренние соединения используют
-mTLS и TLS 1.3.
+Operators can set a custom trust domain and service identities as described in the
+[contract](upstream-contract.md). The Relay identity must match `ENDLESSNET_RELAY_ID`
+exactly. Do not share an identity across different Relay units. All internal
+connections use mTLS and TLS 1.3.
 
-### Только для Relay Coordinator
+### Required only for Relay Coordinator
 
-- PostgreSQL. Текущий E2E baseline — PostgreSQL 17;
-- выделенные database и login role; штатная схема использует локальный Unix
-  socket и peer authentication;
-- HTTPS-доступ к основному EndlessNet Coordinator, который реализует:
-  `GET /internal/coordinator/relay-control/v1/trust-bundle` и
-  `POST /internal/coordinator/relay-control/v1/authorize`;
-- versioned endpoint snapshot JSON. Миграции PostgreSQL встроены в бинарник и
-  применяются при каждом старте.
+- PostgreSQL; the current E2E baseline uses PostgreSQL 17.
+- A dedicated database and login role. The supplied setup uses a local Unix socket
+  and peer authentication.
+- HTTPS access to an upstream implementing
+  `GET /internal/coordinator/relay-control/v1/trust-bundle` and
+  `POST /internal/coordinator/relay-control/v1/authorize`.
+- A versioned JSON endpoint snapshot. PostgreSQL migrations are embedded in the
+  binary and applied at every startup.
 
-### Только для Relay-узла
+### Required only for a Relay node
 
-- публичное DNS-имя и WebPKI certificate/key для него;
-- приватная связность со всеми Relay peers по mesh;
-- `certbot`, `openssl`, `bash` и `sha256sum` нужны только если используется
-  поставляемый timer обновления Let's Encrypt certificate. Для сертификата,
-  управляемого другим способом, timer устанавливать не нужно.
+- A public DNS name and its WebPKI certificate/key.
+- Private mesh connectivity to all Relay peers.
+- `certbot`, `openssl`, `bash` and `sha256sum` only if using the supplied Let's
+  Encrypt certificate renewal timer. Do not install the timer when certificates
+  are managed another way.
 
-## 3. Сетевые потоки
+## 3. Network flows
 
-| Назначение | По умолчанию | Доступ |
+| Purpose | Default | Access |
 | --- | --- | --- |
-| Relay public | TCP `9443` | Из клиентских сетей/Интернета |
-| Relay mesh | TCP `9444` | Только между Relay через `wg0` |
-| Relay Coordinator gRPC | TCP `9445` | Только от Relay через `wg0` |
-| Relay Coordinator endpoints HTTPS | TCP `7078` | Обычно loopback, для основного Coordinator |
+| Relay public | TCP `9443` | Client networks and the Internet |
+| Relay mesh | TCP `9444` | Between Relay instances over `wg0` only |
+| Relay Coordinator gRPC | TCP `9445` | From Relay instances over `wg0` only |
+| Relay Coordinator endpoints HTTPS | TCP `7078` | Usually loopback, for the authorized upstream caller |
 | Relay health/metrics | TCP `9190` | Loopback |
 | Relay Coordinator health | TCP `9191` | Loopback |
-| PostgreSQL | Unix socket | Локально на Coordinator host |
+| PostgreSQL | Unix socket | Local to the Coordinator host |
 
-Сам WireGuard также требует разрешённый UDP-порт, выбранный инфраструктурной
-конфигурацией. Он не задаётся приложением.
+WireGuard also needs an allowed UDP port chosen by the operator's infrastructure
+configuration. The application does not select that port.
 
-## 4. Общая подготовка хоста
+## 4. Common host preparation
 
-Выберите архив под архитектуру сервера, скопируйте его и `checksums.txt`, затем
-проверьте checksum до распаковки:
+Choose the archive for the host architecture, copy it and `checksums.txt`, and
+verify the checksum before extraction:
 
 ```bash
 sha256sum -c checksums.txt --ignore-missing
 ```
 
-Далее от `root`, подставив версию:
+As `root`, substitute the selected version:
 
 ```bash
 VERSION=v1.1.3
@@ -140,15 +136,15 @@ ln -sfn "$RELEASE_DIR" /opt/endlessnet-relay/.current.next
 mv -Tf /opt/endlessnet-relay/.current.next /opt/endlessnet-relay/current
 ```
 
-Убедитесь, что существуют `wg-quick@wg0.service`, `spire-agent.service`, группа
-`spire-workload` и Workload API socket. Не запускайте приложение до выдачи
-нужной SPIFFE identity.
+Ensure `wg-quick@wg0.service`, `spire-agent.service`, the `spire-workload` group
+and Workload API socket exist. Do not start the application before the required
+SPIFFE identity is available.
 
-## 5. Установка Relay Coordinator
+## 5. Install Relay Coordinator
 
 ### 5.1. PostgreSQL
 
-Установите PostgreSQL и создайте выделенные role/database:
+Install PostgreSQL and create a dedicated role and database:
 
 ```bash
 sudo -u postgres createuser --login --no-superuser --no-createdb \
@@ -157,9 +153,9 @@ sudo -u postgres createdb --owner=endlessnet-relay --encoding=UTF8 \
   --template=template0 endlessnet_relay
 ```
 
-Если объекты уже существуют, не создавайте их повторно. В `pg_hba.conf` должен
-быть разрешён `peer`-доступ локальной Unix-socket role `endlessnet-relay` к
-database `endlessnet_relay`. Проверка выполняется от service user:
+Do not recreate objects that already exist. In `pg_hba.conf`, allow local
+Unix-socket `peer` authentication for role `endlessnet-relay` to database
+`endlessnet_relay`. Verify access as the service user:
 
 ```bash
 sudo -u endlessnet-relay psql \
@@ -167,7 +163,7 @@ sudo -u endlessnet-relay psql \
   --command='SELECT 1'
 ```
 
-### 5.2. Конфигурация и запуск
+### 5.2. Configure and start
 
 ```bash
 install -o root -g root -m 0600 \
@@ -181,18 +177,17 @@ install -o root -g root -m 0644 \
   /etc/systemd/system/endlessnet-relay-coordinator.service
 ```
 
-Отредактируйте:
+Edit:
 
-- `ENDLESSNET_COORDINATOR_URL` — HTTPS base URL основного Coordinator;
-- listen addresses, если Coordinator gRPC должен слушать только адрес `wg0`;
-- `/etc/endlessnet-relay/endpoints.json`: `version` должен быть положительным,
-  а `id` каждого endpoint должен совпадать с Relay ID. При изменении содержимого
-  увеличивайте `version`; откат версии snapshot отвергается.
+- `ENDLESSNET_COORDINATOR_URL`: the upstream HTTPS origin.
+- Listen addresses if Coordinator gRPC should bind only to the `wg0` address.
+- `/etc/endlessnet-relay/endpoints.json`: `version` must be positive and each
+  endpoint `id` must match its Relay ID. Content changes require an increased
+  snapshot version; version rollback is rejected.
 
-Endpoint snapshot читается только при старте, поэтому после его изменения нужен
-restart Coordinator.
+The endpoint snapshot is read only at startup, so changes require a Coordinator restart.
 
-Запуск и проверка:
+Start and verify:
 
 ```bash
 systemd-analyze verify /etc/systemd/system/endlessnet-relay-coordinator.service
@@ -203,12 +198,11 @@ curl --fail --silent http://127.0.0.1:9191/readyz
 journalctl -u endlessnet-relay-coordinator.service -n 100 --no-pager
 ```
 
-Сначала должен стать ready Relay Coordinator, и только после этого запускаются
-Relay-узлы.
+Relay Coordinator must become ready before starting Relay nodes.
 
-## 6. Установка каждого Relay-узла
+## 6. Install each Relay node
 
-### 6.1. Конфигурация и публичный сертификат
+### 6.1. Configuration and public certificate
 
 ```bash
 install -o root -g root -m 0600 \
@@ -227,12 +221,12 @@ install -o root -g root -m 0644 \
   /etc/systemd/system/endlessnet-relay.service
 ```
 
-В `relay.env` укажите адрес Coordinator gRPC. В `relay-instance.env` укажите
-уникальный Relay ID и адрес `wg0`, доступный остальным Relay. Оставьте
-`ENDLESSNET_RELAY_BOOT_ID` пустым: процесс создаёт новый boot ID при каждом
-старте. Замените `relay.example` реальным именем сертификата.
+Set the Coordinator gRPC address in `relay.env`. In `relay-instance.env`, set a
+unique Relay ID and a `wg0` address reachable by other Relay instances. Leave
+`ENDLESSNET_RELAY_BOOT_ID` empty so the process generates a new boot ID at every
+startup. Replace `relay.example` with the actual certificate name.
 
-До запуска проверьте certificate, key и DNS:
+Check the certificate, key and DNS before startup:
 
 ```bash
 openssl x509 -in /etc/endlessnet-relay/public-tls/fullchain.pem \
@@ -241,7 +235,7 @@ openssl x509 -in /etc/endlessnet-relay/public-tls/fullchain.pem \
   -noout -checkend 604800
 ```
 
-### 6.2. Запуск и проверка
+### 6.2. Start and verify
 
 ```bash
 systemd-analyze verify /etc/systemd/system/endlessnet-relay.service
@@ -254,13 +248,13 @@ curl --fail --silent http://127.0.0.1:9190/metrics
 journalctl -u endlessnet-relay.service -n 100 --no-pager
 ```
 
-`readyz` становится успешным только после получения trust bundle от Relay
-Coordinator. Запускайте Relay-узлы последовательно и проверяйте каждый перед
-переходом к следующему.
+`readyz` requires a running listener, valid instance lease, usable trust from
+Relay Coordinator and no fencing or draining. Start Relay nodes sequentially,
+checking each before proceeding to the next.
 
-### 6.3. Опциональное обновление Let's Encrypt certificate
+### 6.3. Optional Let's Encrypt certificate renewal
 
-Если сертификат получен Certbot и его имя совпадает с публичным DNS Relay:
+If Certbot issued the certificate and its name matches the Relay public DNS name:
 
 ```bash
 install -d -o root -g root -m 0755 /usr/local/libexec/endlessnet-relay
@@ -287,13 +281,13 @@ systemctl enable --now endlessnet-relay-cert-renew.timer
 systemctl list-timers endlessnet-relay-cert-renew.timer
 ```
 
-Timer использует standalone HTTP-01 и при необходимости временно останавливает
-`nginx.service`; TCP 80 должен быть доступен для ACME challenge.
+The timer uses standalone HTTP-01 and temporarily stops `nginx.service` when
+necessary. TCP port 80 must be reachable for the ACME challenge.
 
-## 7. Обновление и откат
+## 7. Upgrade and rollback
 
-Распакуйте новую версию в новый каталог `releases/vX.Y.Z`, не изменяя каталог
-уже запущенной версии. Перед переключением сохраните текущий target:
+Extract a new version into a new `releases/vX.Y.Z` directory without modifying
+the running version's directory. Preserve the current target before switching:
 
 ```bash
 CURRENT=$(readlink -f /opt/endlessnet-relay/current)
@@ -304,10 +298,10 @@ ln -sfn /opt/endlessnet-relay/releases/vX.Y.Z \
 mv -Tf /opt/endlessnet-relay/.current.next /opt/endlessnet-relay/current
 ```
 
-Перезапустите сначала Coordinator, проверьте `9191/readyz`, затем обновляйте
-Relay-узлы по одному с проверкой `9190/readyz`.
+Restart Coordinator first and check `9191/readyz`. Then update Relay nodes one at
+a time, checking `9190/readyz` after each update.
 
-Для отката атомарно верните `previous` и перезапустите соответствующий unit:
+To roll back, atomically restore `previous` and restart the corresponding unit:
 
 ```bash
 PREVIOUS=$(readlink -f /opt/endlessnet-relay/previous)
@@ -316,11 +310,11 @@ mv -Tf /opt/endlessnet-relay/.current.rollback /opt/endlessnet-relay/current
 systemctl restart endlessnet-relay.service
 ```
 
-На Coordinator host замените последнее имя unit на
-`endlessnet-relay-coordinator.service`. Откат бинарника не откатывает endpoint
-snapshot: snapshot version в PostgreSQL не может двигаться назад.
+On a Coordinator host, use `endlessnet-relay-coordinator.service` in the last
+command. Binary rollback does not roll back the endpoint snapshot: its version
+in PostgreSQL cannot move backwards.
 
-Утилита `endlessnet-relay-smoke` принимает `--trust-domain` и
-`--coordinator-identity` с той же exact identity policy, что и runtime.
-Для собственного домена передайте его явно; identity по умолчанию выводится
-из выбранного домена. Противоречивые настройки отклоняются до сетевой проверки.
+The `endlessnet-relay-smoke` utility accepts `--trust-domain` and
+`--coordinator-identity` with the same exact identity policy as the runtime.
+Pass a custom domain explicitly; the default identity is derived from that domain.
+Contradictory settings are rejected before network checks.

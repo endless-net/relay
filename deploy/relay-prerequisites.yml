@@ -1,5 +1,5 @@
 ---
-- name: Prepare EndlessNet Relay hosts
+- name: Prepare Relay hosts
   hosts: relays
   become: true
   gather_facts: true

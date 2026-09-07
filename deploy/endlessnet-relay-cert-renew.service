@@ -1,5 +1,5 @@
 [Unit]
-Description=Renew the public EndlessNet Relay certificate without nginx
+Description=Renew the public Relay certificate without nginx
 After=network-online.target
 Wants=network-online.target
 

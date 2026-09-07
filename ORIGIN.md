@@ -1,4 +1,4 @@
-# Source provenance
+# Source and release authority
 
-This repository starts with the reviewed EndlessNet Relay public baseline.
-The public history and tagged releases in this repository are authoritative.
+The public history and tagged releases in this repository are authoritative
+for Relay source code and releases.

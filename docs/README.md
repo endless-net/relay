@@ -1,23 +1,25 @@
-# Документация EndlessNet Relay
+# Relay documentation
 
-Этот каталог описывает состояние сервиса, подтверждённое кодом, тестами,
-схемой данных и workflow репозитория на 19 июля 2026 года.
+This catalog describes the product through its code, tests, data model and
+repository workflows. Architecture and runtime validation are recorded separately.
 
-- [Архитектура сервиса](architecture.md) — назначение, компоненты, потоки,
-  контракты, безопасность, отказоустойчивость и эксплуатация.
-- [Принятые решения](decisions.md) — журнал архитектурных решений и их
-  последствий.
-- [Возможное будущее](future.md) — варианты развития, приоритеты и условия,
-  при которых усложнение системы будет оправдано.
+- [Product architecture](architecture.md): purpose, components, flows, contracts,
+  security, resilience and operations.
+- [Architecture decisions](decisions.md): accepted decisions and their consequences.
+- [Possible future directions](future.md): options, priorities and the conditions
+  that would justify additional complexity.
+- [Upstream contract](upstream-contract.md): authorization, trust and identity
+  requirements for compatible integrations.
+- [Protobuf contracts](protobuf-contracts.md): published control and mesh contracts.
+- [Product E2E](product-e2e.md): autonomous validation, coverage and recorded evidence.
+- [Systemd deployment](systemd-deployment.md): operator-managed installation and rollback.
 
-Документация различает три типа утверждений:
+The documentation distinguishes three kinds of statements:
 
-- **реализовано** — поведение непосредственно следует из текущего кода или
-  проверяется тестами;
-- **решено** — ограничение уже закреплено реализацией и должно меняться через
-  отдельное архитектурное решение;
-- **возможно** — идея для обсуждения, а не утверждённый roadmap.
+- **Implemented**: behavior follows directly from the current code or is tested.
+- **Decided**: a design constraint that requires an explicit architectural decision
+  to change.
+- **Possible**: an option for discussion, not an approved roadmap.
 
-Главный Coordinator и клиентская логика выбора relay находятся за границами
-этого репозитория. Их поведение здесь описывается только в той части, которая
-является внешним контрактом EndlessNet Relay.
+Upstream domain logic and client endpoint selection are outside this repository.
+They are described here only where they interact with Relay's published contracts.
