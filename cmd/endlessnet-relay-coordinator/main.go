@@ -38,7 +38,14 @@ func main() {
 	serviceCert := flag.String("service-cert-file", os.Getenv("ENDLESSNET_SERVICE_CERT_FILE"), "Relay Coordinator service certificate")
 	serviceKey := flag.String("service-key-file", os.Getenv("ENDLESSNET_SERVICE_KEY_FILE"), "Relay Coordinator service private key")
 	mainServerName := flag.String("coordinator-server-name", os.Getenv("ENDLESSNET_COORDINATOR_SERVER_NAME"), "main Coordinator TLS server name")
+	trustDomain := flag.String("trust-domain", env("ENDLESSNET_RELAY_TRUST_DOMAIN", tlsconfig.DefaultTrustDomain), "operator SPIFFE trust domain")
+	coordinatorIdentity := flag.String("coordinator-identity", os.Getenv("ENDLESSNET_RELAY_COORDINATOR_IDENTITY"), "exact Relay Coordinator SPIFFE identity; default derived from trust domain")
+	upstreamIdentity := flag.String("upstream-identity", os.Getenv("ENDLESSNET_RELAY_UPSTREAM_IDENTITY"), "exact upstream SPIFFE identity; default derived from trust domain")
 	flag.Parse()
+	policy, policyErr := tlsconfig.NewIdentityPolicy(*trustDomain, *coordinatorIdentity, *upstreamIdentity)
+	if policyErr != nil {
+		fatal(policyErr)
+	}
 
 	if strings.TrimSpace(*dsn) == "" || strings.TrimSpace(*mainCoordinatorURL) == "" || strings.TrimSpace(*endpointsFile) == "" {
 		fatal(errors.New("postgres-dsn, coordinator-url, and endpoints-file are required"))
@@ -49,19 +56,19 @@ func main() {
 	var err error
 	switch strings.TrimSpace(*serviceTLSProvider) {
 	case tlsconfig.ProviderSPIFFE:
-		runtime, runtimeErr := tlsconfig.NewWorkloadRuntime(ctx, *workloadAPIAddr, "spiffe://endlessnet.ru/service/relay-coordinator")
+		runtime, runtimeErr := tlsconfig.NewWorkloadRuntime(ctx, *workloadAPIAddr, policy.CoordinatorID)
 		if runtimeErr != nil {
 			fatal(runtimeErr)
 		}
 		defer runtime.Close()
 		serverTLS, err = runtime.ServerTLSConfig()
 		if err == nil {
-			clientTLS, err = runtime.ClientTLSConfig("spiffe://endlessnet.ru/service/coordinator")
+			clientTLS, err = runtime.ClientTLSConfig(policy.UpstreamID)
 		}
 	case tlsconfig.ProviderDevelopment:
 		serverTLS, err = tlsconfig.MutualServer(*serviceCert, *serviceKey, *serviceCA)
 		if err == nil {
-			clientTLS, err = tlsconfig.MutualClient(*serviceCert, *serviceKey, *serviceCA, *mainServerName, "spiffe://endlessnet.ru/service/coordinator", "spiffe://endlessnet.ru/service/relay-coordinator")
+			clientTLS, err = tlsconfig.MutualClient(*serviceCert, *serviceKey, *serviceCA, *mainServerName, policy.UpstreamID, policy.CoordinatorID)
 		}
 	default:
 		err = errors.New("unsupported internal identity provider")
@@ -83,7 +90,7 @@ func main() {
 		fatal(err)
 	}
 	upstream := authz.HTTPAuthorizer{BaseURL: *mainCoordinatorURL, HTTPClient: httpClient}
-	coordinator := &relaycoordinator.Server{Store: storage, Authorizer: authz.NewCache(upstream)}
+	coordinator := &relaycoordinator.Server{IdentityPolicy: policy, Store: storage, Authorizer: authz.NewCache(upstream)}
 
 	grpcListener, err := net.Listen("tcp", *grpcAddr)
 	if err != nil {
@@ -120,7 +127,13 @@ func main() {
 		}
 	}
 	stop()
-	grpcServer.GracefulStop()
+	stopped := make(chan struct{})
+	go func() { grpcServer.GracefulStop(); close(stopped) }()
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		grpcServer.Stop()
+	}
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = httpServer.Shutdown(shutdownCtx)

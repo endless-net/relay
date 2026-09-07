@@ -47,7 +47,14 @@ func main() {
 	maxConnections := flag.Int("max-connections", relay.DefaultMaxConnections, "maximum concurrent client connections")
 	maxConcurrentAuth := flag.Int("max-concurrent-auth", relay.DefaultMaxConcurrentAuth, "maximum concurrent authentications")
 	maxConnectionsPerSource := flag.Int("max-connections-per-source", relay.DefaultMaxConnectionsPerSource, "maximum concurrent connections per source")
+	trustDomain := flag.String("trust-domain", env("ENDLESSNET_RELAY_TRUST_DOMAIN", tlsconfig.DefaultTrustDomain), "operator SPIFFE trust domain")
+	coordinatorIdentity := flag.String("coordinator-identity", os.Getenv("ENDLESSNET_RELAY_COORDINATOR_IDENTITY"), "exact Relay Coordinator SPIFFE identity; default derived from trust domain")
+	upstreamIdentity := flag.String("upstream-identity", os.Getenv("ENDLESSNET_RELAY_UPSTREAM_IDENTITY"), "exact upstream SPIFFE identity; default derived from trust domain")
 	flag.Parse()
+	policy, policyErr := tlsconfig.NewIdentityPolicy(*trustDomain, *coordinatorIdentity, *upstreamIdentity)
+	if policyErr != nil {
+		fatal(policyErr)
+	}
 
 	if strings.TrimSpace(*relayID) == "" || strings.TrimSpace(*meshAddr) == "" || strings.TrimSpace(*coordinatorAddr) == "" {
 		fatal(errors.New("relay-id, mesh-addr, and relay-coordinator-addr are required"))
@@ -62,7 +69,11 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	relayIdentity := "spiffe://endlessnet.ru/relay/" + *relayID
+	relaySPIFFEID, err := policy.RelayIdentity(*relayID)
+	if err != nil {
+		fatal(err)
+	}
+	relayIdentity := relaySPIFFEID.String()
 	var clientTLS, meshServerTLS, meshClientTLS *tls.Config
 	switch strings.TrimSpace(*serviceTLSProvider) {
 	case tlsconfig.ProviderSPIFFE:
@@ -71,7 +82,7 @@ func main() {
 			fatal(runtimeErr)
 		}
 		defer runtime.Close()
-		clientTLS, err = runtime.ClientTLSConfig("spiffe://endlessnet.ru/service/relay-coordinator")
+		clientTLS, err = runtime.ClientTLSConfig(policy.CoordinatorID)
 		if err == nil {
 			meshServerTLS, err = runtime.ServerTLSConfig()
 		}
@@ -79,7 +90,7 @@ func main() {
 			meshClientTLS, err = runtime.ClientTLSConfigForTrustDomain()
 		}
 	case tlsconfig.ProviderDevelopment:
-		clientTLS, err = tlsconfig.MutualClient(*serviceCert, *serviceKey, *serviceCA, *coordinatorServerName, "spiffe://endlessnet.ru/service/relay-coordinator", relayIdentity)
+		clientTLS, err = tlsconfig.MutualClient(*serviceCert, *serviceKey, *serviceCA, *coordinatorServerName, policy.CoordinatorID, relayIdentity)
 		if err == nil {
 			meshServerTLS, err = tlsconfig.MutualServer(*serviceCert, *serviceKey, *serviceCA)
 		}
@@ -107,6 +118,7 @@ func main() {
 	meshManager := mesh.NewManager(ctx, *relayID, *bootID, meshClientTLS, func(networkID, fromNodeID, toNodeID string, destinationEpoch int64, payload []byte) error {
 		return server.DeliverRemote(networkID, fromNodeID, toNodeID, destinationEpoch, payload)
 	})
+	meshManager.IdentityPolicy = policy
 	defer meshManager.Close()
 	controlClient := &relaycontrol.Client{RelayID: *relayID, BootID: *bootID, MeshAddr: *meshAddr, Control: relayv1.NewRelayControlClient(coordinatorConnection), Peers: meshManager}
 	server, err = relay.NewServer(relay.ServerConfig{Addr: *publicAddr, TLSConfig: publicTLS, Metrics: metrics, RelayID: *relayID, BandwidthLimitBytesPerSecond: *bandwidthLimit, AuthTimeout: relay.DefaultAuthTimeout, Admission: admission, Control: controlClient, Mesh: meshManager, TrustBundleProvider: controlClient.TrustBundle})
@@ -130,7 +142,7 @@ func main() {
 	go func() {
 		errCh <- serveMetrics(ctx, *metricsAddr, metrics, func() bool {
 			bundle, bundleErr := controlClient.TrustBundle()
-			return bundleErr == nil && bundle.Validate() == nil
+			return server.Ready() && controlClient.Ready() && bundleErr == nil && bundle.Validate() == nil
 		})
 	}()
 
@@ -144,7 +156,14 @@ func main() {
 	}
 	stop()
 	server.Fence()
-	meshGRPC.GracefulStop()
+	meshManager.Close()
+	stopped := make(chan struct{})
+	go func() { meshGRPC.GracefulStop(); close(stopped) }()
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		meshGRPC.Stop()
+	}
 	if runErr != nil {
 		fatal(runErr)
 	}

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"math"
 	"reflect"
 	"sort"
 	"strings"
@@ -92,6 +93,9 @@ func (m *Memory) AcquireSession(_ context.Context, session Session, ttl time.Dur
 		return Session{}, ErrFenced
 	}
 	key := sessionKey(session.NetworkID, session.NodeID)
+	if m.sessions[key].Epoch == math.MaxInt64 {
+		return Session{}, errors.New("session epoch exhausted")
+	}
 	session.Epoch = m.sessions[key].Epoch + 1
 	session.LeaseExpires = time.Now().UTC().Add(ttl)
 	m.sessions[key] = session
@@ -105,7 +109,7 @@ func (m *Memory) RenewSession(_ context.Context, session Session, ttl time.Durat
 	if !ok {
 		return Session{}, ErrSessionMissing
 	}
-	if current.RelayID != session.RelayID || current.BootID != session.BootID || current.Epoch != session.Epoch {
+	if !time.Now().UTC().Before(current.LeaseExpires) || current.RelayID != session.RelayID || current.BootID != session.BootID || current.Epoch != session.Epoch {
 		return Session{}, ErrSessionFenced
 	}
 	instance, ok := m.instances[session.RelayID]
@@ -123,7 +127,8 @@ func (m *Memory) ReleaseSession(_ context.Context, session Session) error {
 	key := sessionKey(session.NetworkID, session.NodeID)
 	current, ok := m.sessions[key]
 	if ok && current.RelayID == session.RelayID && current.BootID == session.BootID && current.Epoch == session.Epoch {
-		delete(m.sessions, key)
+		current.LeaseExpires = time.Unix(0, 0).UTC()
+		m.sessions[key] = current
 	}
 	return nil
 }
@@ -134,6 +139,10 @@ func (m *Memory) ResolveSession(_ context.Context, networkID, nodeID string, now
 	session, ok := m.sessions[sessionKey(networkID, nodeID)]
 	if !ok || !now.UTC().Before(session.LeaseExpires) {
 		return Session{}, ErrSessionMissing
+	}
+	instance, exists := m.instances[session.RelayID]
+	if !exists || instance.BootID != session.BootID || !now.Before(instance.LeaseExpires) {
+		return Session{}, ErrSessionFenced
 	}
 	return session, nil
 }

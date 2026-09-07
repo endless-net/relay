@@ -176,22 +176,25 @@ func NewCache(upstream Authorizer) *Cache {
 }
 
 func (c *Cache) AuthorizeCredential(ctx context.Context, credential protocolv1.Credential) error {
-	return c.cached(cacheKey("credential", credential, ""), func() error {
+	return c.cached(cacheKey("credential", credential, ""), credential.ExpiresAt, func() error {
 		return c.Upstream.AuthorizeCredential(ctx, credential)
 	})
 }
 
 func (c *Cache) AuthorizePeer(ctx context.Context, credential protocolv1.Credential, peerID string) error {
-	return c.cached(cacheKey("peer", credential, peerID), func() error {
+	return c.cached(cacheKey("peer", credential, peerID), credential.ExpiresAt, func() error {
 		return c.Upstream.AuthorizePeer(ctx, credential, peerID)
 	})
 }
 
-func (c *Cache) cached(key string, load func() error) error {
+func (c *Cache) cached(key string, expires time.Time, load func() error) error {
 	if c.Upstream == nil {
 		return errors.New("relay authorization upstream is required")
 	}
 	now := c.now()
+	if !now.Before(expires) {
+		return ErrDenied
+	}
 	c.mu.Lock()
 	cached, found := c.entries[key]
 	c.mu.Unlock()
@@ -208,6 +211,10 @@ func (c *Cache) cached(key string, load func() error) error {
 		}
 	}
 	err := load()
+	now = c.now()
+	if !now.Before(expires) {
+		return ErrDenied
+	}
 	if err == nil || errors.Is(err, ErrDenied) {
 		c.put(key, entry{allowed: err == nil, storedAt: now})
 		return err
@@ -236,7 +243,7 @@ func (c *Cache) RelayTrustBundle(ctx context.Context) (protocolv1.SigningTrustBu
 		c.mu.Unlock()
 		return bundle, nil
 	}
-	if !cached.storedAt.IsZero() && now.Sub(cached.storedAt) < c.StaleTTL {
+	if !cached.storedAt.IsZero() && c.now().Sub(cached.storedAt) < c.StaleTTL {
 		return cached.bundle, nil
 	}
 	return protocolv1.SigningTrustBundle{}, err
