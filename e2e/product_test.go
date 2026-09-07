@@ -861,3 +861,37 @@ func TestProductSnapshotPersistence(t *testing.T) {
 		t.Fatal("empty snapshot did not persist across restart")
 	}
 }
+
+func TestProductAuthorizationControl(t *testing.T) {
+	bundle, err := protocolv1.NewSigningTrustBundle(base64.RawURLEncoding.EncodeToString(suite.signingKey.Public().(ed25519.PublicKey)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed := upstreamConfig(bundle)
+	t.Cleanup(func() { setUpstream(t, map[string]any{"config": allowed}) })
+	a, b := productClients(t, false)
+	denied := upstreamConfig(bundle)
+	denied["peer_pairs"] = []map[string]string{{"from": "node-b", "to": "node-a"}}
+	setUpstream(t, map[string]any{"config": denied})
+	// The exact pair was just primed: changing upstream does not bypass fresh cache.
+	assertTransfer(t, a, b, []byte("fresh-decision"))
+	assertEventuallyRejected(t, a, "node-b", []byte("changed-decision"), "relay peer is not allowed", 10*time.Second)
+	setUpstream(t, map[string]any{"config": allowed})
+	// Recovery must occur after the bounded negative decision, without a new session.
+	waitForTransfer(t, a, b, 5*time.Second)
+	setUpstream(t, map[string]any{"mode": "hang"})
+	started := time.Now()
+	client, err := suite.dialRelayClient("relay-c", "node-d")
+	if client != nil {
+		client.close()
+	}
+	if err == nil {
+		t.Fatal("uncached authorization accepted while upstream stalled")
+	}
+	if time.Since(started) > 8*time.Second {
+		t.Fatal("authorization exceeded timeout")
+	}
+	setUpstream(t, map[string]any{"config": allowed})
+	recovered := dialRelayClientEventually(t, "relay-c", "node-d", 15*time.Second)
+	recovered.close()
+}
