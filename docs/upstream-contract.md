@@ -35,7 +35,7 @@ using the published `RejectUnknownUnaryServerInterceptor` or equivalent validati
 | Method | Request | Successful response |
 | --- | --- | --- |
 | `AuthorizeCredential` | `AuthorizeCredentialRequest { Credential credential }` | Empty `AuthorizeCredentialResponse` with gRPC OK |
-| `AuthorizePeerPair` | `AuthorizePeerPairRequest { Credential credential, string peer_id }` | Empty `AuthorizePeerPairResponse` with gRPC OK |
+| `AuthorizePeerPair` | `AuthorizePeerPairRequest { Credential credential, string peer_id, string peer_network_id }` | Empty `AuthorizePeerPairResponse` with gRPC OK |
 | `GetTrustBundle` | Empty `GetTrustBundleRequest` | `GetTrustBundleResponse { SigningTrustBundle relay_trust_bundle }` |
 
 The full method prefix is `/endlessnet.relay.v1.RelayUpstreamService/`.
@@ -53,7 +53,10 @@ inside a successful response.
 
 The upstream verifies signature, issuer/key validity, expiry, active source node
 and network membership. Peer authorization additionally requires an active target
-in the same network and an explicitly allowed directed source/target pair.
+in `peer_network_id` and an explicitly allowed directed source/target pair.
+The destination network is required even for same-network peers. A cross-network
+pair requires an explicit upstream permission for those exact identities; ordinary
+network membership cannot authorize a node in another network.
 Authorization of A to B does not authorize B to A.
 
 The imported `Credential` message contains `algorithm`, `key_id`, `network_id`,

@@ -471,7 +471,7 @@ func (c *relayClient) send(peerID string, payload []byte) error {
 		return err
 	}
 	defer func() { _ = c.conn.SetWriteDeadline(time.Time{}) }()
-	if err := json.NewEncoder(c.writer).Encode(protocolv1.ClientFrame{Type: protocolv1.MessageClientFrame, ProtocolVersion: protocolv1.Version, PeerID: peerID, Payload: payload}); err != nil {
+	if err := json.NewEncoder(c.writer).Encode(protocolv1.ClientFrame{Type: protocolv1.MessageClientFrame, ProtocolVersion: protocolv1.Version, PeerNetworkID: testNetworkID, PeerID: peerID, Payload: payload}); err != nil {
 		return err
 	}
 	return c.writer.Flush()

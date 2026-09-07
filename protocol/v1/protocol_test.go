@@ -102,7 +102,7 @@ func TestPublicProtocolRequiresExplicitVersionAndCanonicalIdentifiers(t *testing
 	if err := hello.Validate(); err == nil {
 		t.Fatal("client hello accepted an invalid heartbeat")
 	}
-	frame := ClientFrame{Type: MessageClientFrame, ProtocolVersion: Version, PeerID: " peer", Payload: []byte("payload")}
+	frame := ClientFrame{Type: MessageClientFrame, ProtocolVersion: Version, PeerNetworkID: "network", PeerID: " peer", Payload: []byte("payload")}
 	if err := frame.Validate(); err == nil {
 		t.Fatal("client frame accepted a non-canonical peer id")
 	}
@@ -117,4 +117,17 @@ func TestPublicProtocolRequiresExplicitVersionAndCanonicalIdentifiers(t *testing
 
 func encodePublicKey(publicKey ed25519.PublicKey) string {
 	return base64.RawURLEncoding.EncodeToString(publicKey)
+}
+
+func TestClientFrameRequiresExplicitDestinationNetwork(t *testing.T) {
+	for _, network := range []string{"", " network", "network "} {
+		frame := ClientFrame{Type: MessageClientFrame, ProtocolVersion: Version, PeerNetworkID: network, PeerID: "peer", Payload: []byte("payload")}
+		if err := frame.Validate(); err == nil {
+			t.Fatalf("accepted destination network %q", network)
+		}
+	}
+	frame := ClientFrame{Type: MessageClientFrame, ProtocolVersion: Version, PeerNetworkID: "network", PeerID: "peer", Payload: []byte("payload")}
+	if err := frame.Validate(); err != nil {
+		t.Fatal(err)
+	}
 }

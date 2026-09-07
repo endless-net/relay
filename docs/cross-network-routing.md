@@ -8,8 +8,13 @@ mesh `network_id` identifies the source. Control authorization now requires the
 destination network, forwards it to upstream, keys cached decisions by the full
 pair and resolves the destination session in that network. Tests distinguish
 same-named nodes in two networks and reject network/epoch substitutions.
-The dataplane control caller still addresses its source network; client-frame
-and mesh propagation are not complete. This draft is not ready to activate.
+Client frames now require `peer_network_id`; local delivery and mesh forwarding
+resolve that destination network. Delivered frames preserve `from_network_id`
+alongside the source node. Local TLS tests use identical node IDs in two networks,
+check an explicit denial and verify remote destination epoch fencing. The mTLS
+mesh test carries distinct source and destination networks across actual gRPC.
+Consumer integration and full product E2E remain unverified; this draft is not
+ready to activate.
 
 Before this work can merge or release:
 

@@ -13,10 +13,10 @@ func TestRegressionRemoteSlowConsumerMustClose(t *testing.T) {
 	sess := &session{networkID: "n", nodeID: "b", conn: a, lease: SessionLease{Epoch: 1}, sendCh: make(chan protocolv1.ServerFrame, 1), done: make(chan struct{})}
 	s := &Server{}
 	s.addSession(sess)
-	if err := s.DeliverRemote("n", "a", "b", 1, []byte("first")); err != nil {
+	if err := s.DeliverRemote("n", "a", "n", "b", 1, []byte("first")); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DeliverRemote("n", "a", "b", 1, []byte("second")); err == nil {
+	if err := s.DeliverRemote("n", "a", "n", "b", 1, []byte("second")); err == nil {
 		t.Fatal("queue should reject")
 	}
 	if !sess.closed.Load() {

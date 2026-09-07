@@ -785,7 +785,7 @@ func TestProductMeshFencing(t *testing.T) {
 	b = dialRelayClientEventually(t, "relay-b", "node-b", 15*time.Second)
 	defer b.close()
 	payload := []byte("stale-epoch-frame")
-	frame := &relayv1.MeshMessage{ProtocolVersion: 1, Body: &relayv1.MeshMessage_Frame{Frame: &relayv1.MeshFrame{RelayId: "relay-a", BootId: suite.bootIDs["relay-a"], NetworkId: testNetworkID, FromNodeId: "node-a", ToNodeId: "node-b", DestinationEpoch: epoch, Payload: payload}}}
+	frame := &relayv1.MeshMessage{ProtocolVersion: 1, Body: &relayv1.MeshMessage_Frame{Frame: &relayv1.MeshFrame{RelayId: "relay-a", BootId: suite.bootIDs["relay-a"], NetworkId: testNetworkID, DestinationNetworkId: testNetworkID, FromNodeId: "node-a", ToNodeId: "node-b", DestinationEpoch: epoch, Payload: payload}}}
 	if err = stream.Send(frame); err != nil {
 		t.Fatal(err)
 	}

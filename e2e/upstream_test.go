@@ -54,7 +54,7 @@ func TestProductUpstreamContract(t *testing.T) {
 		if _, err := client.AuthorizeCredential(ctx, &relayv1.AuthorizeCredentialRequest{Credential: relayv1.CredentialFromProtocol(*signed)}); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := client.AuthorizePeerPair(ctx, &relayv1.AuthorizePeerPairRequest{Credential: relayv1.CredentialFromProtocol(*signed), PeerId: "node-b"}); err != nil {
+		if _, err := client.AuthorizePeerPair(ctx, &relayv1.AuthorizePeerPairRequest{Credential: relayv1.CredentialFromProtocol(*signed), PeerNetworkId: testNetworkID, PeerId: "node-b"}); err != nil {
 			t.Fatal(err)
 		}
 		response, err := client.GetTrustBundle(ctx, &relayv1.GetTrustBundleRequest{})
@@ -108,7 +108,7 @@ func TestProductUpstreamContract(t *testing.T) {
 		defer setUpstream(t, map[string]any{"config": cfg})
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		_, err := client.AuthorizePeerPair(ctx, &relayv1.AuthorizePeerPairRequest{Credential: relayv1.CredentialFromProtocol(*signed), PeerId: "node-b"})
+		_, err := client.AuthorizePeerPair(ctx, &relayv1.AuthorizePeerPairRequest{Credential: relayv1.CredentialFromProtocol(*signed), PeerNetworkId: testNetworkID, PeerId: "node-b"})
 		if status.Code(err) != codes.PermissionDenied {
 			t.Fatal("inactive destination authorized despite remaining pair")
 		}

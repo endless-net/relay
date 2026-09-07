@@ -186,14 +186,14 @@ func (s *server) AuthorizePeerPair(ctx context.Context, request *relayv1.Authori
 		return nil, err
 	}
 	credential, err := relayv1.CredentialToProtocol(request.GetCredential())
-	if err != nil || request.GetPeerId() == "" || request.GetPeerId() != strings.TrimSpace(request.GetPeerId()) {
+	if err != nil || request.GetPeerNetworkId() == "" || request.GetPeerNetworkId() != strings.TrimSpace(request.GetPeerNetworkId()) || request.GetPeerId() == "" || request.GetPeerId() != strings.TrimSpace(request.GetPeerId()) {
 		return nil, status.Error(codes.InvalidArgument, "invalid peer authorization")
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	_, activeTarget := s.nodes[request.GetPeerId()]
 	_, allowedPair := s.pairs[pairKey(credential.NodeID, request.GetPeerId())]
-	if !s.authorizeCredential(credential) || !activeTarget || !allowedPair {
+	if request.GetPeerNetworkId() != s.config.NetworkID || !s.authorizeCredential(credential) || !activeTarget || !allowedPair {
 		return nil, status.Error(codes.PermissionDenied, "peer pair denied")
 	}
 	return &relayv1.AuthorizePeerPairResponse{}, nil
