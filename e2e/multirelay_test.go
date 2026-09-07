@@ -126,6 +126,7 @@ func TestMultiRelayInfrastructure(t *testing.T) {
 		}
 		clients["node-d"] = reconnected
 		waitForTransfer(t, clients["node-a"], reconnected, 20*time.Second)
+		waitForTransfer(t, reconnected, clients["node-c"], 20*time.Second)
 		assertTransfer(t, reconnected, clients["node-c"], []byte("recovered-relay-route"))
 		bootID, err := suite.postgresQuery(context.Background(), "SELECT boot_id FROM relay_instances WHERE relay_id='relay-b'")
 		if err != nil {
