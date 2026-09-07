@@ -328,6 +328,42 @@ func TestProductResources(t *testing.T) {
 			t.Fatal("stalled destination was not closed and counted")
 		})
 	}
+	t.Run("mesh_partition_overflow_and_reconnect", func(t *testing.T) {
+		a, b := productClients(t, false)
+		c := dialRelayClientEventually(t, "relay-c", "node-c", 15*time.Second)
+		defer c.close()
+		waitForTransfer(t, a, c, 20*time.Second)
+		before := metricValue(t, "relay-a", `endlessnet_relay_drops_total{reason="mesh"}`)
+		proxyMode(t, "relay-b", "stall")
+		t.Cleanup(func() { proxyMode(t, "relay-b", "") })
+		deadline := time.Now().Add(20 * time.Second)
+		overflow := false
+		payload := bytes.Repeat([]byte{3}, protocolv1.MaxFramePayloadBytes)
+		for time.Now().Before(deadline) {
+			for i := 0; i < 32; i++ {
+				if err := a.send("node-b", payload); err != nil {
+					t.Fatal(err)
+				}
+				drainEvents(a)
+				drainEvents(b)
+			}
+			if metricValue(t, "relay-a", `endlessnet_relay_drops_total{reason="mesh"}`) > before {
+				overflow = true
+				break
+			}
+		}
+		if !overflow {
+			t.Fatal("stalled mesh did not reach bounded outbound capacity")
+		}
+		assertTransfer(t, a, c, []byte("other-peer-remains-available"))
+		proxyMode(t, "relay-b", "disconnect")
+		proxyMode(t, "relay-b", "")
+		// Backpressure can close the destination when buffered frames are released.
+		b.close()
+		b = dialRelayClientEventually(t, "relay-b", "node-b", 15*time.Second)
+		defer b.close()
+		waitForTransfer(t, a, b, 30*time.Second)
+	})
 	t.Run("bounded_sigterm", func(t *testing.T) {
 		a, b := productClients(t, false)
 		start := time.Now()
@@ -471,5 +507,26 @@ func TestProductSnapshotIdentity(t *testing.T) {
 		if name != "e2e-client" && resp.StatusCode == 200 {
 			t.Fatalf("wrong snapshot caller accepted: %s", name)
 		}
+	}
+}
+
+func proxyMode(t *testing.T, target, mode string) {
+	t.Helper()
+	address, err := suite.port(context.Background(), "fault-proxy", 9440)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(map[string]string{"target": target, "mode": mode})
+	req, err := http.NewRequest(http.MethodPut, "http://"+address+"/control", bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := (&http.Client{Timeout: 3 * time.Second}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 204 {
+		t.Fatalf("proxy control: %d", resp.StatusCode)
 	}
 }

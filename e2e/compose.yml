@@ -1,4 +1,13 @@
 services:
+  fault-proxy:
+    image: "${E2E_INTERNAL_MOCK_IMAGE:?mock image is required}"
+    entrypoint: ["/usr/local/bin/fault-proxy"]
+    ports:
+      - target: 9440
+        published: "0"
+        host_ip: 127.0.0.1
+    networks: [relay-e2e]
+
   postgres:
     image: "${E2E_POSTGRES_IMAGE:-postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193}"
     environment:
@@ -69,7 +78,7 @@ services:
       - --metrics-addr=:9090
       - --relay-id=relay-a
       - --boot-id=${E2E_INTERNAL_RELAY_A_BOOT_ID:-boot-a-1}
-      - --mesh-addr=relay-a:9444
+      - --mesh-addr=fault-proxy:9441
       - --mesh-listen-addr=:9444
       - --relay-coordinator-addr=relay-coordinator:9445
       - --service-tls-provider=spiffe
@@ -106,7 +115,7 @@ services:
       - --metrics-addr=:9090
       - --relay-id=relay-b
       - --boot-id=${E2E_INTERNAL_RELAY_B_BOOT_ID:-boot-b-1}
-      - --mesh-addr=relay-b:9444
+      - --mesh-addr=fault-proxy:9442
       - --mesh-listen-addr=:9444
       - --relay-coordinator-addr=relay-coordinator:9445
       - --service-tls-provider=spiffe
@@ -132,7 +141,7 @@ services:
       - --metrics-addr=:9090
       - --relay-id=relay-c
       - --boot-id=${E2E_INTERNAL_RELAY_C_BOOT_ID:-boot-c-1}
-      - --mesh-addr=relay-c:9444
+      - --mesh-addr=fault-proxy:9443
       - --mesh-listen-addr=:9444
       - --relay-coordinator-addr=relay-coordinator:9445
       - --service-tls-provider=spiffe
