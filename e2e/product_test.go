@@ -483,6 +483,10 @@ func TestProductResources(t *testing.T) {
 		if err := suite.stopService("relay-b"); err != nil {
 			t.Fatal(err)
 		}
+		exitCode, err := suite.compose(context.Background(), "ps", "--all", "--format", "{{.ExitCode}}", "relay-b")
+		if err != nil || strings.TrimSpace(exitCode) != "0" {
+			t.Fatalf("SIGTERM required forced termination: exit %s", strings.TrimSpace(exitCode))
+		}
 		waitForClientClose(t, b, 5*time.Second)
 		if time.Since(start) > 10*time.Second {
 			t.Fatal("shutdown exceeded bound")
@@ -789,6 +793,9 @@ func TestProductNoTrustBootstrap(t *testing.T) {
 
 func TestProductSnapshotPersistence(t *testing.T) {
 	path := filepath.Join(suite.fixturesDir, "endpoints.json")
+	if err := os.Chmod(path, 0644); err != nil {
+		t.Fatal(err)
+	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
