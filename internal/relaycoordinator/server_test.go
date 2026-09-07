@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -16,12 +17,15 @@ import (
 	relayv1 "github.com/endless-net/relay/api/relay/v1"
 	"github.com/endless-net/relay/internal/store"
 	protocolv1 "github.com/endless-net/relay/protocol/v1"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 )
 
 type allowAuthorizer struct {
-	bundle protocolv1.SigningTrustBundle
+	bundle    protocolv1.SigningTrustBundle
+	bundleErr error
 }
 
 func (allowAuthorizer) AuthorizeCredential(context.Context, protocolv1.Credential) error {
@@ -33,7 +37,92 @@ func (allowAuthorizer) AuthorizePeer(context.Context, protocolv1.Credential, str
 }
 
 func (a allowAuthorizer) RelayTrustBundle(context.Context) (protocolv1.SigningTrustBundle, error) {
-	return a.bundle, nil
+	return a.bundle, a.bundleErr
+}
+
+func TestInstanceResponsesRequireValidTrustBundle(t *testing.T) {
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := protocolv1.NewSigningTrustBundle(base64.RawURLEncoding.EncodeToString(publicKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, method := range []string{"register", "heartbeat"} {
+		for _, tc := range []struct {
+			name       string
+			authorizer allowAuthorizer
+			code       codes.Code
+		}{
+			{"valid", allowAuthorizer{bundle: bundle}, codes.OK},
+			{"invalid", allowAuthorizer{}, codes.Unavailable},
+			{"upstream failure", allowAuthorizer{bundle: bundle, bundleErr: errors.New("private upstream detail")}, codes.Unavailable},
+		} {
+			t.Run(method+"/"+tc.name, func(t *testing.T) {
+				ctx := relayContext(t, "relay-a")
+				storage := store.NewMemory()
+				if _, _, err := storage.RegisterInstance(ctx, store.Instance{RelayID: "relay-a", BootID: "boot-a", MeshAddr: "relay-a:9444"}, time.Minute); err != nil {
+					t.Fatal(err)
+				}
+				server := &Server{Store: storage, Authorizer: tc.authorizer}
+				var received *relayv1.SigningTrustBundle
+				var callErr error
+				if method == "register" {
+					response, err := server.RegisterInstance(ctx, &relayv1.RegisterInstanceRequest{RelayId: "relay-a", BootId: "boot-a", MeshAddr: "relay-a:9444"})
+					received, callErr = response.GetRelayTrustBundle(), err
+				} else {
+					response, err := server.HeartbeatInstance(ctx, &relayv1.HeartbeatInstanceRequest{RelayId: "relay-a", BootId: "boot-a"})
+					received, callErr = response.GetRelayTrustBundle(), err
+				}
+				if status.Code(callErr) != tc.code {
+					t.Fatalf("response error = %v, want %v", callErr, tc.code)
+				}
+				if tc.code != codes.OK {
+					if received != nil || status.Convert(callErr).Message() != "relay trust bundle unavailable" {
+						t.Fatalf("unexpected failure response: %v, %v", received, callErr)
+					}
+					return
+				}
+				converted, err := relayv1.TrustBundleToProtocol(received)
+				if err != nil || len(converted.Keys) != len(bundle.Keys) || converted.Keys[0] != bundle.Keys[0] {
+					t.Fatalf("trust bundle was not preserved: %v, %v", converted, err)
+				}
+			})
+		}
+	}
+}
+
+func TestSessionMethodsRejectInvalidIdentityBeforeStoreAccess(t *testing.T) {
+	for _, method := range []string{"renew", "release"} {
+		for _, tc := range []struct {
+			name, boot, network, node string
+			epoch                     int64
+		}{
+			{"missing boot", "", "network", "node", 1},
+			{"padded boot", " boot", "network", "node", 1},
+			{"missing network", "boot", "", "node", 1},
+			{"padded network", "boot", "network ", "node", 1},
+			{"missing node", "boot", "network", "", 1},
+			{"padded node", "boot", "network", " node", 1},
+			{"zero epoch", "boot", "network", "node", 0},
+			{"negative epoch", "boot", "network", "node", -1},
+		} {
+			t.Run(method+"/"+tc.name, func(t *testing.T) {
+				server := &Server{Store: store.NewMemory(), Authorizer: allowAuthorizer{}}
+				ctx := relayContext(t, "relay-a")
+				var err error
+				if method == "renew" {
+					_, err = server.RenewSession(ctx, &relayv1.RenewSessionRequest{RelayId: "relay-a", BootId: tc.boot, NetworkId: tc.network, NodeId: tc.node, Epoch: tc.epoch})
+				} else {
+					_, err = server.ReleaseSession(ctx, &relayv1.ReleaseSessionRequest{RelayId: "relay-a", BootId: tc.boot, NetworkId: tc.network, NodeId: tc.node, Epoch: tc.epoch})
+				}
+				if status.Code(err) != codes.InvalidArgument || status.Convert(err).Message() != "session identity and epoch are required" {
+					t.Fatalf("unexpected validation error: %v", err)
+				}
+			})
+		}
+	}
 }
 
 func TestSessionReconnectFencesOldRelay(t *testing.T) {

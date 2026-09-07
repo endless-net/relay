@@ -51,10 +51,13 @@ E2E_EXTENDED=1 go test -tags=e2e,extended -count=1 -timeout=40m -run TestProduct
 ```
 
 CI builds the images once and passes their archive, checksum, source SHA and
-image IDs to all matrix groups. Dependencies are pinned by digest or commit.
-The required `verify` check succeeds only after static/unit checks and every
+image IDs to all matrix groups. Container dependencies are pinned by digest.
+The `verify` check succeeds only after static/unit checks and every
 product group succeed; branch protection remains enabled. The release workflow
-also waits for product E2E. The soak is compiled only with the additional `extended` build tag; ordinary
+reuses the full CI workflow, including static/unit checks and product E2E, before
+publishing artifacts. Automatic checks run on pull requests and pushes to `main`; release publication
+runs on new `vMAJOR.MINOR.PATCH` tags. CI and DCO can also be dispatched manually
+on a branch for additional verification. The soak is compiled only with the additional `extended` build tag; ordinary
 E2E runs do not silently skip it. Each regular group has a 20-minute job deadline.
 The manual extended job allows 45 minutes including setup for a 30-minute soak.
 
