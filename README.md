@@ -12,6 +12,7 @@ configuration are not required to build or test Relay.
 ## Documentation
 
 - [Service architecture](docs/architecture.md)
+- [Autonomous product E2E and coverage](docs/product-e2e.md)
 - [Architecture decisions](docs/decisions.md)
 - [Possible future directions](docs/future.md)
 
