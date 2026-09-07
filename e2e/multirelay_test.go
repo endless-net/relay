@@ -320,6 +320,9 @@ func testSecurityContracts(t *testing.T, clients map[string]*relayClient) {
 }
 
 func (h *harness) dialRelayClient(relayID, nodeID string) (*relayClient, error) {
+	return h.dialRelayClientReading(relayID, nodeID, true)
+}
+func (h *harness) dialRelayClientReading(relayID, nodeID string, read bool) (*relayClient, error) {
 	address, err := h.port(context.Background(), relayID, 9443)
 	if err != nil {
 		return nil, err
@@ -370,7 +373,9 @@ func (h *harness) dialRelayClient(relayID, nodeID string) (*relayClient, error) 
 		return nil, fmt.Errorf("relay ready message = %#v", ready)
 	}
 	client := &relayClient{relayID: relayID, nodeID: nodeID, conn: connection, writer: writer, events: make(chan relayEvent, 128), closed: make(chan struct{})}
-	go client.readLoop(decoder)
+	if read {
+		go client.readLoop(decoder)
+	}
 	return client, nil
 }
 
@@ -506,7 +511,7 @@ func assertTransfer(t *testing.T, from, to *relayClient, payload []byte) {
 				continue
 			}
 			if event.frame.ProtocolVersion != protocolv1.Version || event.frame.FromNodeID != from.nodeID || !bytes.Equal(event.frame.Payload, payload) {
-				t.Fatalf("unexpected delivered frame: %#v", event.frame)
+				t.Fatal("delivered frame source or payload differs")
 			}
 			assertNoPayload(t, to, payload, 200*time.Millisecond)
 			return
@@ -518,7 +523,7 @@ func assertTransfer(t *testing.T, from, to *relayClient, payload []byte) {
 				t.Fatalf("source %s closed: %v", from.nodeID, event.closed)
 			}
 		case <-timer.C:
-			t.Fatalf("payload %q was not delivered from %s to %s", payload, from.nodeID, to.nodeID)
+			t.Fatalf("payload was not delivered from %s to %s", from.nodeID, to.nodeID)
 		}
 	}
 }
@@ -596,7 +601,7 @@ func assertNoPayload(t *testing.T, client *relayClient, payload []byte, duration
 		select {
 		case event := <-client.events:
 			if event.frame != nil && bytes.Equal(event.frame.Payload, payload) {
-				t.Fatalf("client %s received forbidden or duplicate payload %q", client.nodeID, payload)
+				t.Fatalf("client %s received forbidden or duplicate payload", client.nodeID)
 			}
 			if event.closed != nil {
 				return
@@ -708,7 +713,7 @@ func assertMetricsDoNotContain(t *testing.T, value string) {
 	t.Helper()
 	for _, relayID := range []string{"relay-a", "relay-b", "relay-c"} {
 		if metrics := fetchMetrics(t, relayID); strings.Contains(metrics, value) {
-			t.Fatalf("%s metrics leaked application payload %q", relayID, value)
+			t.Fatalf("%s metrics leaked application payload", relayID)
 		}
 	}
 }
