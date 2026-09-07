@@ -7,7 +7,10 @@ Coordinator is an external integration task (architecture D-032, audit R1).
 
 ## Transport and identity
 
-HTTPS TLS 1.3 with mutual X.509-SVID authentication. The client is the exact
+HTTPS TLS 1.3 with mutual X.509-SVID authentication. `--coordinator-url` must
+be an HTTPS origin (optional trailing slash), without userinfo, path prefix,
+query or fragment; invalid configuration is rejected before opening listeners
+or accessing storage. The client is the exact
 configured Relay Coordinator identity; the server is the exact configured
 upstream identity. A different identity in the same trust domain is rejected.
 Defaults are `spiffe://endlessnet.ru/service/relay-coordinator` and

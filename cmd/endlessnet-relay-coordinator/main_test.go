@@ -30,3 +30,16 @@ func TestLoadSnapshotRejectsUnknownTrailingAndInvalidContracts(t *testing.T) {
 		})
 	}
 }
+
+func TestUpstreamURLRequiresHTTPSOrigin(t *testing.T) {
+	for _, raw := range []string{"https://upstream:9447", "https://auth.operator.example/", "https://[::1]:9447"} {
+		if err := validateUpstreamURL(raw); err != nil {
+			t.Errorf("valid origin %q: %v", raw, err)
+		}
+	}
+	for _, raw := range []string{"http://upstream:9447", "upstream:9447", "https://", " https://upstream", "https://user:fixture@upstream", "https://upstream?query=1", "https://upstream?", "https://upstream#fragment", "https://upstream/prefix", "https://upstream:bad"} {
+		if err := validateUpstreamURL(raw); err == nil {
+			t.Errorf("accepted invalid origin %q", raw)
+		}
+	}
+}
