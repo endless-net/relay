@@ -26,7 +26,8 @@ identities and identical service identities fail at startup.
 - Directed pair: `{"action":"peer","credential":{...},"peer_id":"destination"}`.
 
 Credential fields are exactly `algorithm`, `key_id`, `network_id`, `node_id`,
-`expires_at` (RFC3339 timestamp), `signature`. See the published
+`expires_at` (RFC3339 timestamp), `signature`. Credential `algorithm` is exactly
+`ed25519-relay-credential-v3`; it differs from a signing trust key's `ed25519` label. See the published
 [credential codec](../protocol/v1/protocol.go) for Ed25519 canonical signing bytes,
 base64 encoding and key identifiers; the format remains unchanged.
 
@@ -59,7 +60,7 @@ best effort: no durable queue or delivery ACK is added by this contract.
 
 ## Conformance ownership
 
-[Независимые request fixtures](../internal/authz/testdata/upstream-requests.json),
+[Independent request fixtures](../internal/authz/testdata/upstream-requests.json),
 [HTTP conformance tests](../internal/authz/conformance_test.go) and the independently
 controlled [E2E upstream](../e2e/cmd/mock-coordinator/main.go) verify the product
 boundary. Fixtures and identities are generated per run and never published.

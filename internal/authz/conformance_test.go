@@ -40,7 +40,7 @@ func TestPublishedUpstreamRequestFixtures(t *testing.T) {
 			}))
 			defer server.Close()
 			a := HTTPAuthorizer{BaseURL: server.URL, HTTPClient: server.Client()}
-			credential := protocolv1.Credential{Algorithm: "ed25519", KeyID: "fixture-key", NetworkID: "fixture-network", NodeID: "fixture-source", ExpiresAt: time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC), Signature: "non-credential-fixture"}
+			credential := protocolv1.Credential{Algorithm: "ed25519-relay-credential-v3", KeyID: "fixture-key", NetworkID: "fixture-network", NodeID: "fixture-source", ExpiresAt: time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC), Signature: "non-credential-fixture"}
 			var err error
 			if fixture["action"] == "peer" {
 				err = a.AuthorizePeer(context.Background(), credential, "fixture-target")
