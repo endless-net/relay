@@ -132,3 +132,10 @@ no registry release was published.
 | Relay Coordinator image ID | `9c51705488cdfad1c7784523845b5fb113ec01aaf344d65d4d4902689a29c84e` |
 | Upstream/proxy image ID | `99d6845bbac9b84605458aedb40fa1eacd174f3ed65e319bcaa966530f0d2bf4` |
 | Image archive | `905622dde8b3251644d7590ccd7b7d7d7f1481a119649c35812130c64d8cdd79` |
+
+[Run 34133071126](https://github.com/endless-net/relay/actions/runs/34133071126)
+exposed a recovery-test timing defect: a 12-second rejection deadline was shorter
+than a still-valid 15-second destination lease if shutdown release did not finish.
+The test now observes release/expiry in PostgreSQL before asserting network rejection,
+and restores the stopped Relay on failure. The failed run remains visible; no
+automatic retry masks it. Production authorization and lease semantics are unchanged.
