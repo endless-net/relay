@@ -76,6 +76,10 @@ services:
     command: &relay-command-a
       - --addr=:9443
       - --metrics-addr=:9090
+      - --max-connections=${E2E_MAX_CONNECTIONS:-4096}
+      - --max-concurrent-auth=${E2E_MAX_AUTH:-128}
+      - --max-connections-per-source=${E2E_MAX_SOURCE:-32}
+      - --bandwidth-limit-bytes-per-second=${E2E_BANDWIDTH:-0}
       - --relay-id=relay-a
       - --boot-id=${E2E_INTERNAL_RELAY_A_BOOT_ID:-boot-a-1}
       - --mesh-addr=fault-proxy:9441
@@ -113,6 +117,10 @@ services:
     command:
       - --addr=:9443
       - --metrics-addr=:9090
+      - --max-connections=${E2E_MAX_CONNECTIONS:-4096}
+      - --max-concurrent-auth=${E2E_MAX_AUTH:-128}
+      - --max-connections-per-source=${E2E_MAX_SOURCE:-32}
+      - --bandwidth-limit-bytes-per-second=${E2E_BANDWIDTH:-0}
       - --relay-id=relay-b
       - --boot-id=${E2E_INTERNAL_RELAY_B_BOOT_ID:-boot-b-1}
       - --mesh-addr=fault-proxy:9442
@@ -139,6 +147,10 @@ services:
     command:
       - --addr=:9443
       - --metrics-addr=:9090
+      - --max-connections=${E2E_MAX_CONNECTIONS:-4096}
+      - --max-concurrent-auth=${E2E_MAX_AUTH:-128}
+      - --max-connections-per-source=${E2E_MAX_SOURCE:-32}
+      - --bandwidth-limit-bytes-per-second=${E2E_BANDWIDTH:-0}
       - --relay-id=relay-c
       - --boot-id=${E2E_INTERNAL_RELAY_C_BOOT_ID:-boot-c-1}
       - --mesh-addr=fault-proxy:9443
