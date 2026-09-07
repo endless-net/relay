@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 )
@@ -66,5 +67,46 @@ func TestExpiredSessionCannotRenew(t *testing.T) {
 	}
 	if _, err = s.RenewSession(ctx, old, time.Minute); err == nil {
 		t.Fatal("expired session renewed")
+	}
+}
+
+func TestConcurrentAcquireEpochs(t *testing.T) { checkConcurrentEpochs(t, NewMemory()) }
+func checkConcurrentEpochs(t *testing.T, s Store) {
+	ctx := context.Background()
+	for _, id := range []string{"concurrent-a", "concurrent-b"} {
+		if _, _, err := s.RegisterInstance(ctx, Instance{RelayID: id, BootID: "boot", MeshAddr: id + ":9444"}, time.Minute); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const count = 20
+	epochs := make(chan int64, count)
+	var wg sync.WaitGroup
+	for i := 0; i < count; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			id := "concurrent-a"
+			if i%2 == 1 {
+				id = "concurrent-b"
+			}
+			session, err := s.AcquireSession(ctx, Session{NetworkID: "concurrent", NodeID: "node", RelayID: id, BootID: "boot"}, time.Minute)
+			if err != nil {
+				t.Errorf("concurrent acquire: %v", err)
+				return
+			}
+			epochs <- session.Epoch
+		}(i)
+	}
+	wg.Wait()
+	close(epochs)
+	seen := map[int64]bool{}
+	for epoch := range epochs {
+		if seen[epoch] {
+			t.Errorf("reused epoch %d", epoch)
+		}
+		seen[epoch] = true
+	}
+	if len(seen) != count {
+		t.Fatalf("got %d unique epochs, want %d", len(seen), count)
 	}
 }
