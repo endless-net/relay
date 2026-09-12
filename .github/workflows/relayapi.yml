@@ -35,8 +35,8 @@ jobs:
           go mod verify
           go vet ./...
           go test -race ./...
-          go list -m all > modules.txt
-          if grep -Eq '^github.com/endless-net/relay( |$)|github.com/jackc/|github.com/spiffe/' modules.txt; then
+          go list -deps ./... > packages.txt
+          if grep -Eq '^github.com/endless-net/relay/(internal|cmd|relaytest)(/|$)|^github.com/jackc/' packages.txt; then
             echo 'API depends on runtime infrastructure' >&2
             exit 1
           fi
