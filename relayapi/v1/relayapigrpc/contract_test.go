@@ -47,6 +47,17 @@ func TestCredentialAndTrustBundleTypedRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRejectTypedNilProtobufMessages(t *testing.T) {
+	for _, message := range []proto.Message{nil, (*RenewSessionResponse)(nil), (*ReleaseSessionResponse)(nil), (*AuthorizeCredentialResponse)(nil)} {
+		if err := RejectUnknownFields(message); err == nil {
+			t.Fatalf("nil message accepted: %T", message)
+		}
+	}
+	if err := RejectUnknownFields(&RenewSessionResponse{}); err != nil {
+		t.Fatal("valid empty response rejected", err)
+	}
+}
+
 func TestRejectUnknownFieldsRecursesIntoNestedMessages(t *testing.T) {
 	unknown := protowire.AppendTag(nil, 99, protowire.VarintType)
 	unknown = protowire.AppendVarint(unknown, 1)
