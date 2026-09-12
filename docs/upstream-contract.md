@@ -1,7 +1,7 @@
 # Supported upstream contract
 
 Relay's authorization and trust contract is the protobuf schema
-[`api/relay/v1/upstream.proto`](../api/relay/v1/upstream.proto). Buf builds, lints
+[`proto/relay/v1/upstream.proto`](../proto/relay/v1/upstream.proto). Buf builds, lints
 and generates it in this repository. Nothing is published to Buf Schema Registry.
 An operator supplies an implementation of `endlessnet.relay.v1.RelayUpstreamService`
 and a credential issuer. Integrators own conformance and deployment acceptance.
@@ -64,8 +64,8 @@ The imported `Credential` message contains `algorithm`, `key_id`, `network_id`,
 in protobuf; conversion must preserve the instant used by the credential codec.
 The algorithm remains `ed25519-relay-credential-v3`. Public client credentials and
 their canonical signing bytes are unchanged. Use the published
-[conversion helpers](../api/relay/v1/contract.go) and
-[credential codec](../protocol/v1/protocol.go); no private signing key belongs in Relay.
+[conversion helpers](../relayapi/v1/relayapigrpc/contract.go) and
+[credential codec](../relayapi/v1/protocol.go); no private signing key belongs in Relay.
 
 ### Trust
 

@@ -118,7 +118,7 @@ jobs:
           buf lint
           buf build
           buf generate
-          git diff --exit-code -- api/relay/v1
+          git diff --exit-code -- relayapi/v1/relayapigrpc
       - name: Check released protobuf compatibility (advisory)
         continue-on-error: true
         shell: bash
@@ -210,9 +210,14 @@ jobs:
         run: go build ./...
       - uses: github/codeql-action/analyze@v4
 
+  api:
+    needs: plan
+    if: needs.plan.outputs.checks == 'true'
+    uses: ./.github/workflows/relayapi.yml
+
   verify:
     if: always() && needs.plan.outputs.checks == 'true'
-    needs: [plan, go-tests, race, lint, protobuf, dependency-scan, contracts, product-e2e, analyze]
+    needs: [plan, go-tests, race, lint, protobuf, dependency-scan, contracts, product-e2e, analyze, api]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

@@ -2,9 +2,9 @@ syntax = "proto3";
 
 package endlessnet.relay.v1;
 
-import "api/relay/v1/relay.proto";
+import "relay/v1/relay.proto";
 
-option go_package = "github.com/endless-net/relay/api/relay/v1;relayv1";
+option go_package = "github.com/endless-net/relay/relayapi/v1/relayapigrpc;relayv1";
 
 // RelayUpstreamService is implemented by the operator's authorization and trust
 // authority. Every RPC requires the exact configured Relay Coordinator mTLS identity.

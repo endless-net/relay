@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/endless-net/relay/internal/relay"
-	protocolv1 "github.com/endless-net/relay/protocol/v1"
+	protocolv1 "github.com/endless-net/relay/relayapi/v1"
 )
 
 type Config struct {

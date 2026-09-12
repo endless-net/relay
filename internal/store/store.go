@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	protocolv1 "github.com/endless-net/relay/protocol/v1"
+	protocolv1 "github.com/endless-net/relay/relayapi/v1"
 )
 
 var (

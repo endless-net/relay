@@ -5,7 +5,7 @@ import (
 	"crypto"
 	"crypto/tls"
 	"crypto/x509"
-	relayv1 "github.com/endless-net/relay/api/relay/v1"
+	relayv1 "github.com/endless-net/relay/relayapi/v1/relayapigrpc"
 	"github.com/spiffe/go-spiffe/v2/bundle/x509bundle"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	spiffetls "github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"

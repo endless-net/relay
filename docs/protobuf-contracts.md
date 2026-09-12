@@ -1,7 +1,7 @@
 # Protobuf API contracts
 
 Relay's versioned gRPC contract is the source schema under
-`api/relay/v1/relay.proto` (control/mesh) and `api/relay/v1/upstream.proto`
+`proto/relay/v1/relay.proto` (control/mesh) and `proto/relay/v1/upstream.proto`
 (operator authorization/trust). Buf owns compilation, linting, breaking-change
 checks, and Go/gRPC generation.
 
@@ -17,7 +17,8 @@ buf build
 buf generate
 ```
 
-The generated Go files under `api/relay/v1` are committed. A change to the
+The generated Go files under `relayapi/v1/relayapigrpc` are committed in the
+independently released [API module](../relayapi/README.md). A change to the
 schema must regenerate them and leave no generated-file diff in CI.
 
 After the currently released relay schema is revalidated as the first Buf

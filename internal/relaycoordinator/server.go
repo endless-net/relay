@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	relayv1 "github.com/endless-net/relay/api/relay/v1"
 	"github.com/endless-net/relay/internal/authz"
 	"github.com/endless-net/relay/internal/store"
 	"github.com/endless-net/relay/internal/tlsconfig"
+	relayv1 "github.com/endless-net/relay/relayapi/v1/relayapigrpc"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"

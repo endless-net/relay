@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	protocolv1 "github.com/endless-net/relay/protocol/v1"
+	protocolv1 "github.com/endless-net/relay/relayapi/v1"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )

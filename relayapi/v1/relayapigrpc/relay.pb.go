@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.10
 // 	protoc        (unknown)
-// source: api/relay/v1/relay.proto
+// source: relay/v1/relay.proto
 
 package relayv1
 
@@ -35,7 +35,7 @@ type Credential struct {
 
 func (x *Credential) Reset() {
 	*x = Credential{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[0]
+	mi := &file_relay_v1_relay_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47,7 +47,7 @@ func (x *Credential) String() string {
 func (*Credential) ProtoMessage() {}
 
 func (x *Credential) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[0]
+	mi := &file_relay_v1_relay_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -60,7 +60,7 @@ func (x *Credential) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Credential.ProtoReflect.Descriptor instead.
 func (*Credential) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{0}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Credential) GetAlgorithm() string {
@@ -118,7 +118,7 @@ type SigningTrustKey struct {
 
 func (x *SigningTrustKey) Reset() {
 	*x = SigningTrustKey{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[1]
+	mi := &file_relay_v1_relay_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -130,7 +130,7 @@ func (x *SigningTrustKey) String() string {
 func (*SigningTrustKey) ProtoMessage() {}
 
 func (x *SigningTrustKey) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[1]
+	mi := &file_relay_v1_relay_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -143,7 +143,7 @@ func (x *SigningTrustKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SigningTrustKey.ProtoReflect.Descriptor instead.
 func (*SigningTrustKey) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{1}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *SigningTrustKey) GetKeyId() string {
@@ -192,7 +192,7 @@ type SigningTrustBundle struct {
 
 func (x *SigningTrustBundle) Reset() {
 	*x = SigningTrustBundle{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[2]
+	mi := &file_relay_v1_relay_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -204,7 +204,7 @@ func (x *SigningTrustBundle) String() string {
 func (*SigningTrustBundle) ProtoMessage() {}
 
 func (x *SigningTrustBundle) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[2]
+	mi := &file_relay_v1_relay_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -217,7 +217,7 @@ func (x *SigningTrustBundle) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SigningTrustBundle.ProtoReflect.Descriptor instead.
 func (*SigningTrustBundle) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{2}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *SigningTrustBundle) GetVersion() int32 {
@@ -252,7 +252,7 @@ type RelayInstance struct {
 
 func (x *RelayInstance) Reset() {
 	*x = RelayInstance{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[3]
+	mi := &file_relay_v1_relay_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -264,7 +264,7 @@ func (x *RelayInstance) String() string {
 func (*RelayInstance) ProtoMessage() {}
 
 func (x *RelayInstance) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[3]
+	mi := &file_relay_v1_relay_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -277,7 +277,7 @@ func (x *RelayInstance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RelayInstance.ProtoReflect.Descriptor instead.
 func (*RelayInstance) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{3}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *RelayInstance) GetRelayId() string {
@@ -312,7 +312,7 @@ type RegisterInstanceRequest struct {
 
 func (x *RegisterInstanceRequest) Reset() {
 	*x = RegisterInstanceRequest{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[4]
+	mi := &file_relay_v1_relay_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -324,7 +324,7 @@ func (x *RegisterInstanceRequest) String() string {
 func (*RegisterInstanceRequest) ProtoMessage() {}
 
 func (x *RegisterInstanceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[4]
+	mi := &file_relay_v1_relay_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -337,7 +337,7 @@ func (x *RegisterInstanceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterInstanceRequest.ProtoReflect.Descriptor instead.
 func (*RegisterInstanceRequest) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{4}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *RegisterInstanceRequest) GetRelayId() string {
@@ -372,7 +372,7 @@ type RegisterInstanceResponse struct {
 
 func (x *RegisterInstanceResponse) Reset() {
 	*x = RegisterInstanceResponse{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[5]
+	mi := &file_relay_v1_relay_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -384,7 +384,7 @@ func (x *RegisterInstanceResponse) String() string {
 func (*RegisterInstanceResponse) ProtoMessage() {}
 
 func (x *RegisterInstanceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[5]
+	mi := &file_relay_v1_relay_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -397,7 +397,7 @@ func (x *RegisterInstanceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterInstanceResponse.ProtoReflect.Descriptor instead.
 func (*RegisterInstanceResponse) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{5}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *RegisterInstanceResponse) GetPeers() []*RelayInstance {
@@ -431,7 +431,7 @@ type HeartbeatInstanceRequest struct {
 
 func (x *HeartbeatInstanceRequest) Reset() {
 	*x = HeartbeatInstanceRequest{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[6]
+	mi := &file_relay_v1_relay_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -443,7 +443,7 @@ func (x *HeartbeatInstanceRequest) String() string {
 func (*HeartbeatInstanceRequest) ProtoMessage() {}
 
 func (x *HeartbeatInstanceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[6]
+	mi := &file_relay_v1_relay_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -456,7 +456,7 @@ func (x *HeartbeatInstanceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatInstanceRequest.ProtoReflect.Descriptor instead.
 func (*HeartbeatInstanceRequest) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{6}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *HeartbeatInstanceRequest) GetRelayId() string {
@@ -484,7 +484,7 @@ type HeartbeatInstanceResponse struct {
 
 func (x *HeartbeatInstanceResponse) Reset() {
 	*x = HeartbeatInstanceResponse{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[7]
+	mi := &file_relay_v1_relay_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -496,7 +496,7 @@ func (x *HeartbeatInstanceResponse) String() string {
 func (*HeartbeatInstanceResponse) ProtoMessage() {}
 
 func (x *HeartbeatInstanceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[7]
+	mi := &file_relay_v1_relay_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -509,7 +509,7 @@ func (x *HeartbeatInstanceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatInstanceResponse.ProtoReflect.Descriptor instead.
 func (*HeartbeatInstanceResponse) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{7}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *HeartbeatInstanceResponse) GetPeers() []*RelayInstance {
@@ -544,7 +544,7 @@ type AcquireSessionRequest struct {
 
 func (x *AcquireSessionRequest) Reset() {
 	*x = AcquireSessionRequest{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[8]
+	mi := &file_relay_v1_relay_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -556,7 +556,7 @@ func (x *AcquireSessionRequest) String() string {
 func (*AcquireSessionRequest) ProtoMessage() {}
 
 func (x *AcquireSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[8]
+	mi := &file_relay_v1_relay_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -569,7 +569,7 @@ func (x *AcquireSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcquireSessionRequest.ProtoReflect.Descriptor instead.
 func (*AcquireSessionRequest) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{8}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *AcquireSessionRequest) GetRelayId() string {
@@ -602,7 +602,7 @@ type AcquireSessionResponse struct {
 
 func (x *AcquireSessionResponse) Reset() {
 	*x = AcquireSessionResponse{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[9]
+	mi := &file_relay_v1_relay_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -614,7 +614,7 @@ func (x *AcquireSessionResponse) String() string {
 func (*AcquireSessionResponse) ProtoMessage() {}
 
 func (x *AcquireSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[9]
+	mi := &file_relay_v1_relay_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -627,7 +627,7 @@ func (x *AcquireSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcquireSessionResponse.ProtoReflect.Descriptor instead.
 func (*AcquireSessionResponse) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{9}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *AcquireSessionResponse) GetEpoch() int64 {
@@ -651,7 +651,7 @@ type RenewSessionRequest struct {
 
 func (x *RenewSessionRequest) Reset() {
 	*x = RenewSessionRequest{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[10]
+	mi := &file_relay_v1_relay_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -663,7 +663,7 @@ func (x *RenewSessionRequest) String() string {
 func (*RenewSessionRequest) ProtoMessage() {}
 
 func (x *RenewSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[10]
+	mi := &file_relay_v1_relay_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -676,7 +676,7 @@ func (x *RenewSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenewSessionRequest.ProtoReflect.Descriptor instead.
 func (*RenewSessionRequest) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{10}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *RenewSessionRequest) GetRelayId() string {
@@ -729,7 +729,7 @@ type RenewSessionResponse struct {
 
 func (x *RenewSessionResponse) Reset() {
 	*x = RenewSessionResponse{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[11]
+	mi := &file_relay_v1_relay_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -741,7 +741,7 @@ func (x *RenewSessionResponse) String() string {
 func (*RenewSessionResponse) ProtoMessage() {}
 
 func (x *RenewSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[11]
+	mi := &file_relay_v1_relay_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -754,7 +754,7 @@ func (x *RenewSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenewSessionResponse.ProtoReflect.Descriptor instead.
 func (*RenewSessionResponse) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{11}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{11}
 }
 
 type ReleaseSessionRequest struct {
@@ -770,7 +770,7 @@ type ReleaseSessionRequest struct {
 
 func (x *ReleaseSessionRequest) Reset() {
 	*x = ReleaseSessionRequest{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[12]
+	mi := &file_relay_v1_relay_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -782,7 +782,7 @@ func (x *ReleaseSessionRequest) String() string {
 func (*ReleaseSessionRequest) ProtoMessage() {}
 
 func (x *ReleaseSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[12]
+	mi := &file_relay_v1_relay_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -795,7 +795,7 @@ func (x *ReleaseSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReleaseSessionRequest.ProtoReflect.Descriptor instead.
 func (*ReleaseSessionRequest) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{12}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ReleaseSessionRequest) GetRelayId() string {
@@ -841,7 +841,7 @@ type ReleaseSessionResponse struct {
 
 func (x *ReleaseSessionResponse) Reset() {
 	*x = ReleaseSessionResponse{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[13]
+	mi := &file_relay_v1_relay_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -853,7 +853,7 @@ func (x *ReleaseSessionResponse) String() string {
 func (*ReleaseSessionResponse) ProtoMessage() {}
 
 func (x *ReleaseSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[13]
+	mi := &file_relay_v1_relay_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -866,7 +866,7 @@ func (x *ReleaseSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReleaseSessionResponse.ProtoReflect.Descriptor instead.
 func (*ReleaseSessionResponse) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{13}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{13}
 }
 
 type AuthorizePeerRequest struct {
@@ -884,7 +884,7 @@ type AuthorizePeerRequest struct {
 
 func (x *AuthorizePeerRequest) Reset() {
 	*x = AuthorizePeerRequest{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[14]
+	mi := &file_relay_v1_relay_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -896,7 +896,7 @@ func (x *AuthorizePeerRequest) String() string {
 func (*AuthorizePeerRequest) ProtoMessage() {}
 
 func (x *AuthorizePeerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[14]
+	mi := &file_relay_v1_relay_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -909,7 +909,7 @@ func (x *AuthorizePeerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthorizePeerRequest.ProtoReflect.Descriptor instead.
 func (*AuthorizePeerRequest) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{14}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *AuthorizePeerRequest) GetRelayId() string {
@@ -965,7 +965,7 @@ type AuthorizePeerResponse struct {
 
 func (x *AuthorizePeerResponse) Reset() {
 	*x = AuthorizePeerResponse{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[15]
+	mi := &file_relay_v1_relay_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -977,7 +977,7 @@ func (x *AuthorizePeerResponse) String() string {
 func (*AuthorizePeerResponse) ProtoMessage() {}
 
 func (x *AuthorizePeerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[15]
+	mi := &file_relay_v1_relay_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -990,7 +990,7 @@ func (x *AuthorizePeerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthorizePeerResponse.ProtoReflect.Descriptor instead.
 func (*AuthorizePeerResponse) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{15}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *AuthorizePeerResponse) GetDestinationRelayId() string {
@@ -1030,7 +1030,7 @@ type MeshMessage struct {
 
 func (x *MeshMessage) Reset() {
 	*x = MeshMessage{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[16]
+	mi := &file_relay_v1_relay_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1042,7 +1042,7 @@ func (x *MeshMessage) String() string {
 func (*MeshMessage) ProtoMessage() {}
 
 func (x *MeshMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[16]
+	mi := &file_relay_v1_relay_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1055,7 +1055,7 @@ func (x *MeshMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MeshMessage.ProtoReflect.Descriptor instead.
 func (*MeshMessage) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{16}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *MeshMessage) GetProtocolVersion() int32 {
@@ -1146,7 +1146,7 @@ type MeshHello struct {
 
 func (x *MeshHello) Reset() {
 	*x = MeshHello{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[17]
+	mi := &file_relay_v1_relay_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1158,7 +1158,7 @@ func (x *MeshHello) String() string {
 func (*MeshHello) ProtoMessage() {}
 
 func (x *MeshHello) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[17]
+	mi := &file_relay_v1_relay_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1171,7 +1171,7 @@ func (x *MeshHello) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MeshHello.ProtoReflect.Descriptor instead.
 func (*MeshHello) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{17}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *MeshHello) GetRelayId() string {
@@ -1205,7 +1205,7 @@ type MeshFrame struct {
 
 func (x *MeshFrame) Reset() {
 	*x = MeshFrame{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[18]
+	mi := &file_relay_v1_relay_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1217,7 +1217,7 @@ func (x *MeshFrame) String() string {
 func (*MeshFrame) ProtoMessage() {}
 
 func (x *MeshFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[18]
+	mi := &file_relay_v1_relay_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1230,7 +1230,7 @@ func (x *MeshFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MeshFrame.ProtoReflect.Descriptor instead.
 func (*MeshFrame) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{18}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *MeshFrame) GetRelayId() string {
@@ -1297,7 +1297,7 @@ type MeshPing struct {
 
 func (x *MeshPing) Reset() {
 	*x = MeshPing{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[19]
+	mi := &file_relay_v1_relay_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1309,7 +1309,7 @@ func (x *MeshPing) String() string {
 func (*MeshPing) ProtoMessage() {}
 
 func (x *MeshPing) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[19]
+	mi := &file_relay_v1_relay_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1322,7 +1322,7 @@ func (x *MeshPing) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MeshPing.ProtoReflect.Descriptor instead.
 func (*MeshPing) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{19}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{19}
 }
 
 type MeshPong struct {
@@ -1333,7 +1333,7 @@ type MeshPong struct {
 
 func (x *MeshPong) Reset() {
 	*x = MeshPong{}
-	mi := &file_api_relay_v1_relay_proto_msgTypes[20]
+	mi := &file_relay_v1_relay_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1345,7 +1345,7 @@ func (x *MeshPong) String() string {
 func (*MeshPong) ProtoMessage() {}
 
 func (x *MeshPong) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_relay_proto_msgTypes[20]
+	mi := &file_relay_v1_relay_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1358,14 +1358,14 @@ func (x *MeshPong) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MeshPong.ProtoReflect.Descriptor instead.
 func (*MeshPong) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_relay_proto_rawDescGZIP(), []int{20}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{20}
 }
 
-var File_api_relay_v1_relay_proto protoreflect.FileDescriptor
+var File_relay_v1_relay_proto protoreflect.FileDescriptor
 
-const file_api_relay_v1_relay_proto_rawDesc = "" +
+const file_relay_v1_relay_proto_rawDesc = "" +
 	"\n" +
-	"\x18api/relay/v1/relay.proto\x12\x13endlessnet.relay.v1\"\xc8\x01\n" +
+	"\x14relay/v1/relay.proto\x12\x13endlessnet.relay.v1\"\xc8\x01\n" +
 	"\n" +
 	"Credential\x12\x1c\n" +
 	"\talgorithm\x18\x01 \x01(\tR\talgorithm\x12\x15\n" +
@@ -1479,22 +1479,22 @@ const file_api_relay_v1_relay_proto_rawDesc = "" +
 	"\x0eReleaseSession\x12*.endlessnet.relay.v1.ReleaseSessionRequest\x1a+.endlessnet.relay.v1.ReleaseSessionResponse\x12f\n" +
 	"\rAuthorizePeer\x12).endlessnet.relay.v1.AuthorizePeerRequest\x1a*.endlessnet.relay.v1.AuthorizePeerResponse2^\n" +
 	"\tRelayMesh\x12Q\n" +
-	"\aConnect\x12 .endlessnet.relay.v1.MeshMessage\x1a .endlessnet.relay.v1.MeshMessage(\x010\x01B3Z1github.com/endless-net/relay/api/relay/v1;relayv1b\x06proto3"
+	"\aConnect\x12 .endlessnet.relay.v1.MeshMessage\x1a .endlessnet.relay.v1.MeshMessage(\x010\x01B?Z=github.com/endless-net/relay/relayapi/v1/relayapigrpc;relayv1b\x06proto3"
 
 var (
-	file_api_relay_v1_relay_proto_rawDescOnce sync.Once
-	file_api_relay_v1_relay_proto_rawDescData []byte
+	file_relay_v1_relay_proto_rawDescOnce sync.Once
+	file_relay_v1_relay_proto_rawDescData []byte
 )
 
-func file_api_relay_v1_relay_proto_rawDescGZIP() []byte {
-	file_api_relay_v1_relay_proto_rawDescOnce.Do(func() {
-		file_api_relay_v1_relay_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_api_relay_v1_relay_proto_rawDesc), len(file_api_relay_v1_relay_proto_rawDesc)))
+func file_relay_v1_relay_proto_rawDescGZIP() []byte {
+	file_relay_v1_relay_proto_rawDescOnce.Do(func() {
+		file_relay_v1_relay_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_relay_v1_relay_proto_rawDesc), len(file_relay_v1_relay_proto_rawDesc)))
 	})
-	return file_api_relay_v1_relay_proto_rawDescData
+	return file_relay_v1_relay_proto_rawDescData
 }
 
-var file_api_relay_v1_relay_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
-var file_api_relay_v1_relay_proto_goTypes = []any{
+var file_relay_v1_relay_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_relay_v1_relay_proto_goTypes = []any{
 	(*Credential)(nil),                // 0: endlessnet.relay.v1.Credential
 	(*SigningTrustKey)(nil),           // 1: endlessnet.relay.v1.SigningTrustKey
 	(*SigningTrustBundle)(nil),        // 2: endlessnet.relay.v1.SigningTrustBundle
@@ -1517,7 +1517,7 @@ var file_api_relay_v1_relay_proto_goTypes = []any{
 	(*MeshPing)(nil),                  // 19: endlessnet.relay.v1.MeshPing
 	(*MeshPong)(nil),                  // 20: endlessnet.relay.v1.MeshPong
 }
-var file_api_relay_v1_relay_proto_depIdxs = []int32{
+var file_relay_v1_relay_proto_depIdxs = []int32{
 	1,  // 0: endlessnet.relay.v1.SigningTrustBundle.keys:type_name -> endlessnet.relay.v1.SigningTrustKey
 	3,  // 1: endlessnet.relay.v1.RegisterInstanceResponse.peers:type_name -> endlessnet.relay.v1.RelayInstance
 	2,  // 2: endlessnet.relay.v1.RegisterInstanceResponse.relay_trust_bundle:type_name -> endlessnet.relay.v1.SigningTrustBundle
@@ -1551,12 +1551,12 @@ var file_api_relay_v1_relay_proto_depIdxs = []int32{
 	0,  // [0:12] is the sub-list for field type_name
 }
 
-func init() { file_api_relay_v1_relay_proto_init() }
-func file_api_relay_v1_relay_proto_init() {
-	if File_api_relay_v1_relay_proto != nil {
+func init() { file_relay_v1_relay_proto_init() }
+func file_relay_v1_relay_proto_init() {
+	if File_relay_v1_relay_proto != nil {
 		return
 	}
-	file_api_relay_v1_relay_proto_msgTypes[16].OneofWrappers = []any{
+	file_relay_v1_relay_proto_msgTypes[16].OneofWrappers = []any{
 		(*MeshMessage_Hello)(nil),
 		(*MeshMessage_Frame)(nil),
 		(*MeshMessage_Ping)(nil),
@@ -1566,17 +1566,17 @@ func file_api_relay_v1_relay_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_relay_v1_relay_proto_rawDesc), len(file_api_relay_v1_relay_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_relay_v1_relay_proto_rawDesc), len(file_relay_v1_relay_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   2,
 		},
-		GoTypes:           file_api_relay_v1_relay_proto_goTypes,
-		DependencyIndexes: file_api_relay_v1_relay_proto_depIdxs,
-		MessageInfos:      file_api_relay_v1_relay_proto_msgTypes,
+		GoTypes:           file_relay_v1_relay_proto_goTypes,
+		DependencyIndexes: file_relay_v1_relay_proto_depIdxs,
+		MessageInfos:      file_relay_v1_relay_proto_msgTypes,
 	}.Build()
-	File_api_relay_v1_relay_proto = out.File
-	file_api_relay_v1_relay_proto_goTypes = nil
-	file_api_relay_v1_relay_proto_depIdxs = nil
+	File_relay_v1_relay_proto = out.File
+	file_relay_v1_relay_proto_goTypes = nil
+	file_relay_v1_relay_proto_depIdxs = nil
 }

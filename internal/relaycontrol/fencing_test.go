@@ -3,8 +3,8 @@ package relaycontrol
 import (
 	"context"
 	"encoding/base64"
-	relayv1 "github.com/endless-net/relay/api/relay/v1"
-	protocolv1 "github.com/endless-net/relay/protocol/v1"
+	protocolv1 "github.com/endless-net/relay/relayapi/v1"
+	relayv1 "github.com/endless-net/relay/relayapi/v1/relayapigrpc"
 	"google.golang.org/grpc"
 	"testing"
 	"time"

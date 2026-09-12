@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             (unknown)
-// source: api/relay/v1/relay.proto
+// source: relay/v1/relay.proto
 
 package relayv1
 
@@ -307,7 +307,7 @@ var RelayControl_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "api/relay/v1/relay.proto",
+	Metadata: "relay/v1/relay.proto",
 }
 
 const (
@@ -403,5 +403,5 @@ var RelayMesh_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "api/relay/v1/relay.proto",
+	Metadata: "relay/v1/relay.proto",
 }
