@@ -55,6 +55,6 @@ jobs:
           export GOMODCACHE="$consumer/cache"
           cd "$consumer"
           go mod init example.com/relayapi-consumer
-          go get "github.com/endless-net/relay/relayapi@$version"
+          go get -t "github.com/endless-net/relay/relayapi/v1/...@$version"
           go test github.com/endless-net/relay/relayapi/v1/...
           go mod verify
