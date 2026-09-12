@@ -23,6 +23,7 @@ func TestPostgresReleasedEpochCannotBeReused(t *testing.T) {
 	defer s.Close()
 	checkReleasedEpoch(t, s)
 	checkConcurrentEpochs(t, s)
+	checkStoreContractMatrix(t, s)
 }
 
 func TestPostgresPersistenceExpiryOverflowAndSnapshots(t *testing.T) {

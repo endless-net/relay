@@ -1,5 +1,8 @@
 # Autonomous product E2E
 
+The ongoing [functional coverage audit](test-coverage-audit.md) tracks additional
+boundary regressions, evidence requirements and remaining test work.
+
 Relay owns this suite. It requires Docker Compose on a GitHub-hosted
 `ubuntu-latest` runner and builds production binaries from one source SHA.
 No sources or CI from an integrator's upstream, credential issuer, client or

@@ -29,10 +29,10 @@ dataplane features. No wire or module version change is part of this work.
 | Credentials and trust rotation | `TestProductTrustRotation`, upstream contract tests | Added invalid trust matrix, inclusive/exclusive key validity, unknown key, typed-nil protobuf rejection |
 | Authorization, directed ACL and network isolation | `TestProductAuthorizationControl`, `TestProductCrossNetworkRouting` | Added fresh/stale exact TTL and slow-error boundaries, ownership and bounded-cache replacement regressions |
 | Control client and lease state | `TestRegressionHungHeartbeatMustFence`, `TestProductFencing` | Added nil/invalid replies, epoch/route bounds, atomic rejected-state update and trust ownership |
-| Session lifecycle, local delivery, fencing | `TestSessionRenewalFailureClosesSession`, `TestProductFencing`, `TestProductResources` | Added authenticated-session fencing/readiness regression; audit replacement and late cleanup |
-| Mesh forwarding, boot/epoch fencing, reconnect | `TestMultiRelayInfrastructure`, `TestProductMeshFencing` | Pending detailed boundary audit against `internal/mesh/mesh.go` |
-| Limits, queues, bandwidth and metrics | `TestProductResources`, admission tests | Pending counter invariants, bandwidth boundary and slow-reader audit |
-| Persistent registry, sessions, endpoints | PostgreSQL integration tests; `TestProductSnapshotPersistence` | Pending shared store contract matrix and snapshot aliasing/ordering cases |
+| Session lifecycle, local delivery, fencing | `TestSessionRenewalFailureClosesSession`, `TestProductFencing`, `TestProductResources` | Added authenticated-session fencing/readiness, replacement and late-cleanup regressions; final E2E pending |
+| Mesh forwarding, boot/epoch fencing, reconnect | `TestMultiRelayInfrastructure`, `TestProductMeshFencing` | Added bounded queue, payload ownership, invalid-route and unchanged/removed peer snapshot tests; final E2E pending |
+| Limits, queues, bandwidth and metrics | `TestProductResources`, admission tests | Added exact bandwidth/replenishment, closed/full queue, concurrent counter and bounded metric-label checks; final E2E pending |
+| Persistent registry, sessions, endpoints | PostgreSQL integration tests; `TestProductSnapshotPersistence` | Added shared Memory/PostgreSQL session matrix and snapshot aliasing/ordering/rollback cases; real PostgreSQL execution pending |
 | SPIFFE identity, trust domain, renewal and outage | `TestProductSPIFFE`, `TestProductSPIREOutage`, custom-domain matrix | Added own-identity revalidation after source rotation, missing SVID, error propagation and recovery |
 | Startup, health/readiness, shutdown and smoke tool | Product trust-bootstrap, snapshot, lifecycle groups | Pending command/helper and readiness semantics audit |
 | Experimental extension validation | `TestContracts`, `TestRejectInvalidAuthorityAndBounds`, `FuzzDiscoveryValidation` | Pending full boundary matrix; no runtime activation claim |
