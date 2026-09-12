@@ -1,0 +1,60 @@
+name: Relay API
+
+on:
+  workflow_call:
+  push:
+    tags: ["relayapi/v0.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: relayapi/go.mod
+          cache: false
+      - name: Test API without the runtime checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          isolated=$(mktemp -d)
+          cp -R relayapi/. "$isolated/"
+          cd "$isolated"
+          test -z "$(gofmt -l .)"
+          go mod verify
+          go vet ./...
+          go test -race ./...
+          go list -m all > modules.txt
+          if grep -Eq '^github.com/endless-net/relay( |$)|github.com/jackc/|github.com/spiffe/' modules.txt; then
+            echo 'API depends on runtime infrastructure' >&2
+            exit 1
+          fi
+      - name: Verify published module from a fresh consumer
+        if: startsWith(github.ref, 'refs/tags/relayapi/')
+        env:
+          API_TAG: ${{ github.ref_name }}
+          GOPROXY: direct
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$API_TAG" =~ ^relayapi/v0\.[0-9]+\.[0-9]+$ ]]
+          git merge-base --is-ancestor HEAD origin/main
+          version=${API_TAG#relayapi/}
+          consumer=$(mktemp -d)
+          export GOMODCACHE="$consumer/cache"
+          cd "$consumer"
+          go mod init example.com/relayapi-consumer
+          go get "github.com/endless-net/relay/relayapi@$version"
+          go test github.com/endless-net/relay/relayapi/v1/...
+          go mod verify

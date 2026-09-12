@@ -3,5 +3,6 @@ set -eu
 
 test -z "$(gofmt -l .)"
 go vet ./...
+(cd relayapi && go mod verify && go vet ./... && go test -race ./...)
 go test -race ./...
 go build ./cmd/endlessnet-relay ./cmd/endlessnet-relay-coordinator ./cmd/endlessnet-relay-smoke

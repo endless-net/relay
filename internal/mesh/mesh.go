@@ -9,9 +9,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	relayv1 "github.com/endless-net/relay/api/relay/v1"
 	"github.com/endless-net/relay/internal/relay"
 	"github.com/endless-net/relay/internal/tlsconfig"
+	relayv1 "github.com/endless-net/relay/relayapi/v1/relayapigrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"

@@ -30,7 +30,7 @@ import (
 	"testing"
 	"time"
 
-	protocolv1 "github.com/endless-net/relay/protocol/v1"
+	protocolv1 "github.com/endless-net/relay/relayapi/v1"
 	"github.com/spiffe/go-spiffe/v2/bundle/x509bundle"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	spiffetls "github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"

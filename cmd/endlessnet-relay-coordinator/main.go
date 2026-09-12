@@ -15,12 +15,12 @@ import (
 	"syscall"
 	"time"
 
-	relayv1 "github.com/endless-net/relay/api/relay/v1"
 	"github.com/endless-net/relay/internal/authz"
 	"github.com/endless-net/relay/internal/relaycoordinator"
 	"github.com/endless-net/relay/internal/store"
 	"github.com/endless-net/relay/internal/tlsconfig"
-	protocolv1 "github.com/endless-net/relay/protocol/v1"
+	protocolv1 "github.com/endless-net/relay/relayapi/v1"
+	relayv1 "github.com/endless-net/relay/relayapi/v1/relayapigrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )

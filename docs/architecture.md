@@ -220,7 +220,7 @@ stream. Server interceptors recursively validate requests; control and mesh
 clients validate every response in the same way.
 
 The operator implements `RelayUpstreamService` from
-[`upstream.proto`](../api/relay/v1/upstream.proto): `AuthorizeCredential`,
+[`upstream.proto`](../proto/relay/v1/upstream.proto): `AuthorizeCredential`,
 `AuthorizePeerPair` and `GetTrustBundle`. It uses gRPC with exact SPIFFE mTLS
 identities and strict request/response validation; no upstream JSON fallback exists.
 See the [upstream contract](upstream-contract.md).

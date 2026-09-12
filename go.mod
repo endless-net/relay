@@ -5,11 +5,14 @@ go 1.27.0
 retract v1.1.2 // tag was republished with a different module checksum; use v1.1.3
 
 require (
+	github.com/endless-net/relay/relayapi v0.0.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/spiffe/go-spiffe/v2 v2.8.1
 	google.golang.org/grpc v1.83.1
 	google.golang.org/protobuf v1.36.11
 )
+
+replace github.com/endless-net/relay/relayapi => ./relayapi
 
 require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect

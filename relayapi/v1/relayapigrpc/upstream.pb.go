@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.10
 // 	protoc        (unknown)
-// source: api/relay/v1/upstream.proto
+// source: relay/v1/upstream.proto
 
 package relayv1
 
@@ -30,7 +30,7 @@ type AuthorizeCredentialRequest struct {
 
 func (x *AuthorizeCredentialRequest) Reset() {
 	*x = AuthorizeCredentialRequest{}
-	mi := &file_api_relay_v1_upstream_proto_msgTypes[0]
+	mi := &file_relay_v1_upstream_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42,7 +42,7 @@ func (x *AuthorizeCredentialRequest) String() string {
 func (*AuthorizeCredentialRequest) ProtoMessage() {}
 
 func (x *AuthorizeCredentialRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_upstream_proto_msgTypes[0]
+	mi := &file_relay_v1_upstream_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -55,7 +55,7 @@ func (x *AuthorizeCredentialRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthorizeCredentialRequest.ProtoReflect.Descriptor instead.
 func (*AuthorizeCredentialRequest) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_upstream_proto_rawDescGZIP(), []int{0}
+	return file_relay_v1_upstream_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *AuthorizeCredentialRequest) GetCredential() *Credential {
@@ -73,7 +73,7 @@ type AuthorizeCredentialResponse struct {
 
 func (x *AuthorizeCredentialResponse) Reset() {
 	*x = AuthorizeCredentialResponse{}
-	mi := &file_api_relay_v1_upstream_proto_msgTypes[1]
+	mi := &file_relay_v1_upstream_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -85,7 +85,7 @@ func (x *AuthorizeCredentialResponse) String() string {
 func (*AuthorizeCredentialResponse) ProtoMessage() {}
 
 func (x *AuthorizeCredentialResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_upstream_proto_msgTypes[1]
+	mi := &file_relay_v1_upstream_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -98,7 +98,7 @@ func (x *AuthorizeCredentialResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthorizeCredentialResponse.ProtoReflect.Descriptor instead.
 func (*AuthorizeCredentialResponse) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_upstream_proto_rawDescGZIP(), []int{1}
+	return file_relay_v1_upstream_proto_rawDescGZIP(), []int{1}
 }
 
 type AuthorizePeerPairRequest struct {
@@ -113,7 +113,7 @@ type AuthorizePeerPairRequest struct {
 
 func (x *AuthorizePeerPairRequest) Reset() {
 	*x = AuthorizePeerPairRequest{}
-	mi := &file_api_relay_v1_upstream_proto_msgTypes[2]
+	mi := &file_relay_v1_upstream_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -125,7 +125,7 @@ func (x *AuthorizePeerPairRequest) String() string {
 func (*AuthorizePeerPairRequest) ProtoMessage() {}
 
 func (x *AuthorizePeerPairRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_upstream_proto_msgTypes[2]
+	mi := &file_relay_v1_upstream_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -138,7 +138,7 @@ func (x *AuthorizePeerPairRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthorizePeerPairRequest.ProtoReflect.Descriptor instead.
 func (*AuthorizePeerPairRequest) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_upstream_proto_rawDescGZIP(), []int{2}
+	return file_relay_v1_upstream_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *AuthorizePeerPairRequest) GetCredential() *Credential {
@@ -170,7 +170,7 @@ type AuthorizePeerPairResponse struct {
 
 func (x *AuthorizePeerPairResponse) Reset() {
 	*x = AuthorizePeerPairResponse{}
-	mi := &file_api_relay_v1_upstream_proto_msgTypes[3]
+	mi := &file_relay_v1_upstream_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -182,7 +182,7 @@ func (x *AuthorizePeerPairResponse) String() string {
 func (*AuthorizePeerPairResponse) ProtoMessage() {}
 
 func (x *AuthorizePeerPairResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_upstream_proto_msgTypes[3]
+	mi := &file_relay_v1_upstream_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -195,7 +195,7 @@ func (x *AuthorizePeerPairResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthorizePeerPairResponse.ProtoReflect.Descriptor instead.
 func (*AuthorizePeerPairResponse) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_upstream_proto_rawDescGZIP(), []int{3}
+	return file_relay_v1_upstream_proto_rawDescGZIP(), []int{3}
 }
 
 type GetTrustBundleRequest struct {
@@ -206,7 +206,7 @@ type GetTrustBundleRequest struct {
 
 func (x *GetTrustBundleRequest) Reset() {
 	*x = GetTrustBundleRequest{}
-	mi := &file_api_relay_v1_upstream_proto_msgTypes[4]
+	mi := &file_relay_v1_upstream_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -218,7 +218,7 @@ func (x *GetTrustBundleRequest) String() string {
 func (*GetTrustBundleRequest) ProtoMessage() {}
 
 func (x *GetTrustBundleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_upstream_proto_msgTypes[4]
+	mi := &file_relay_v1_upstream_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -231,7 +231,7 @@ func (x *GetTrustBundleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTrustBundleRequest.ProtoReflect.Descriptor instead.
 func (*GetTrustBundleRequest) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_upstream_proto_rawDescGZIP(), []int{4}
+	return file_relay_v1_upstream_proto_rawDescGZIP(), []int{4}
 }
 
 type GetTrustBundleResponse struct {
@@ -243,7 +243,7 @@ type GetTrustBundleResponse struct {
 
 func (x *GetTrustBundleResponse) Reset() {
 	*x = GetTrustBundleResponse{}
-	mi := &file_api_relay_v1_upstream_proto_msgTypes[5]
+	mi := &file_relay_v1_upstream_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -255,7 +255,7 @@ func (x *GetTrustBundleResponse) String() string {
 func (*GetTrustBundleResponse) ProtoMessage() {}
 
 func (x *GetTrustBundleResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_relay_v1_upstream_proto_msgTypes[5]
+	mi := &file_relay_v1_upstream_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -268,7 +268,7 @@ func (x *GetTrustBundleResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTrustBundleResponse.ProtoReflect.Descriptor instead.
 func (*GetTrustBundleResponse) Descriptor() ([]byte, []int) {
-	return file_api_relay_v1_upstream_proto_rawDescGZIP(), []int{5}
+	return file_relay_v1_upstream_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *GetTrustBundleResponse) GetRelayTrustBundle() *SigningTrustBundle {
@@ -278,11 +278,11 @@ func (x *GetTrustBundleResponse) GetRelayTrustBundle() *SigningTrustBundle {
 	return nil
 }
 
-var File_api_relay_v1_upstream_proto protoreflect.FileDescriptor
+var File_relay_v1_upstream_proto protoreflect.FileDescriptor
 
-const file_api_relay_v1_upstream_proto_rawDesc = "" +
+const file_relay_v1_upstream_proto_rawDesc = "" +
 	"\n" +
-	"\x1bapi/relay/v1/upstream.proto\x12\x13endlessnet.relay.v1\x1a\x18api/relay/v1/relay.proto\"]\n" +
+	"\x17relay/v1/upstream.proto\x12\x13endlessnet.relay.v1\x1a\x14relay/v1/relay.proto\"]\n" +
 	"\x1aAuthorizeCredentialRequest\x12?\n" +
 	"\n" +
 	"credential\x18\x01 \x01(\v2\x1f.endlessnet.relay.v1.CredentialR\n" +
@@ -301,22 +301,22 @@ const file_api_relay_v1_upstream_proto_rawDesc = "" +
 	"\x14RelayUpstreamService\x12x\n" +
 	"\x13AuthorizeCredential\x12/.endlessnet.relay.v1.AuthorizeCredentialRequest\x1a0.endlessnet.relay.v1.AuthorizeCredentialResponse\x12r\n" +
 	"\x11AuthorizePeerPair\x12-.endlessnet.relay.v1.AuthorizePeerPairRequest\x1a..endlessnet.relay.v1.AuthorizePeerPairResponse\x12i\n" +
-	"\x0eGetTrustBundle\x12*.endlessnet.relay.v1.GetTrustBundleRequest\x1a+.endlessnet.relay.v1.GetTrustBundleResponseB3Z1github.com/endless-net/relay/api/relay/v1;relayv1b\x06proto3"
+	"\x0eGetTrustBundle\x12*.endlessnet.relay.v1.GetTrustBundleRequest\x1a+.endlessnet.relay.v1.GetTrustBundleResponseB?Z=github.com/endless-net/relay/relayapi/v1/relayapigrpc;relayv1b\x06proto3"
 
 var (
-	file_api_relay_v1_upstream_proto_rawDescOnce sync.Once
-	file_api_relay_v1_upstream_proto_rawDescData []byte
+	file_relay_v1_upstream_proto_rawDescOnce sync.Once
+	file_relay_v1_upstream_proto_rawDescData []byte
 )
 
-func file_api_relay_v1_upstream_proto_rawDescGZIP() []byte {
-	file_api_relay_v1_upstream_proto_rawDescOnce.Do(func() {
-		file_api_relay_v1_upstream_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_api_relay_v1_upstream_proto_rawDesc), len(file_api_relay_v1_upstream_proto_rawDesc)))
+func file_relay_v1_upstream_proto_rawDescGZIP() []byte {
+	file_relay_v1_upstream_proto_rawDescOnce.Do(func() {
+		file_relay_v1_upstream_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_relay_v1_upstream_proto_rawDesc), len(file_relay_v1_upstream_proto_rawDesc)))
 	})
-	return file_api_relay_v1_upstream_proto_rawDescData
+	return file_relay_v1_upstream_proto_rawDescData
 }
 
-var file_api_relay_v1_upstream_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
-var file_api_relay_v1_upstream_proto_goTypes = []any{
+var file_relay_v1_upstream_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_relay_v1_upstream_proto_goTypes = []any{
 	(*AuthorizeCredentialRequest)(nil),  // 0: endlessnet.relay.v1.AuthorizeCredentialRequest
 	(*AuthorizeCredentialResponse)(nil), // 1: endlessnet.relay.v1.AuthorizeCredentialResponse
 	(*AuthorizePeerPairRequest)(nil),    // 2: endlessnet.relay.v1.AuthorizePeerPairRequest
@@ -326,7 +326,7 @@ var file_api_relay_v1_upstream_proto_goTypes = []any{
 	(*Credential)(nil),                  // 6: endlessnet.relay.v1.Credential
 	(*SigningTrustBundle)(nil),          // 7: endlessnet.relay.v1.SigningTrustBundle
 }
-var file_api_relay_v1_upstream_proto_depIdxs = []int32{
+var file_relay_v1_upstream_proto_depIdxs = []int32{
 	6, // 0: endlessnet.relay.v1.AuthorizeCredentialRequest.credential:type_name -> endlessnet.relay.v1.Credential
 	6, // 1: endlessnet.relay.v1.AuthorizePeerPairRequest.credential:type_name -> endlessnet.relay.v1.Credential
 	7, // 2: endlessnet.relay.v1.GetTrustBundleResponse.relay_trust_bundle:type_name -> endlessnet.relay.v1.SigningTrustBundle
@@ -343,27 +343,27 @@ var file_api_relay_v1_upstream_proto_depIdxs = []int32{
 	0, // [0:3] is the sub-list for field type_name
 }
 
-func init() { file_api_relay_v1_upstream_proto_init() }
-func file_api_relay_v1_upstream_proto_init() {
-	if File_api_relay_v1_upstream_proto != nil {
+func init() { file_relay_v1_upstream_proto_init() }
+func file_relay_v1_upstream_proto_init() {
+	if File_relay_v1_upstream_proto != nil {
 		return
 	}
-	file_api_relay_v1_relay_proto_init()
+	file_relay_v1_relay_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_relay_v1_upstream_proto_rawDesc), len(file_api_relay_v1_upstream_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_relay_v1_upstream_proto_rawDesc), len(file_relay_v1_upstream_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_api_relay_v1_upstream_proto_goTypes,
-		DependencyIndexes: file_api_relay_v1_upstream_proto_depIdxs,
-		MessageInfos:      file_api_relay_v1_upstream_proto_msgTypes,
+		GoTypes:           file_relay_v1_upstream_proto_goTypes,
+		DependencyIndexes: file_relay_v1_upstream_proto_depIdxs,
+		MessageInfos:      file_relay_v1_upstream_proto_msgTypes,
 	}.Build()
-	File_api_relay_v1_upstream_proto = out.File
-	file_api_relay_v1_upstream_proto_goTypes = nil
-	file_api_relay_v1_upstream_proto_depIdxs = nil
+	File_relay_v1_upstream_proto = out.File
+	file_relay_v1_upstream_proto_goTypes = nil
+	file_relay_v1_upstream_proto_depIdxs = nil
 }

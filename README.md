@@ -1,5 +1,10 @@
 # Relay
 
+The independently versioned Go API lives in [`relayapi`](relayapi/README.md).
+Its first release is `relayapi/v0.0.0`. Runtime, client and upstream consumers
+import this module; API tags do not release or deploy the server.
+Future capability contracts are documented separately from runtime support.
+
 Relay provides the TLS relay dataplane, Relay Coordinator, and
 active-active relay mesh used when peers cannot establish a direct path.
 
