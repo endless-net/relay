@@ -6,12 +6,13 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"github.com/endless-net/relay/internal/testserver"
-	"github.com/endless-net/relay/internal/tlsconfig"
 	"log"
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/endless-net/relay/internal/testserver"
+	"github.com/endless-net/relay/internal/tlsconfig"
 )
 
 func main() {
