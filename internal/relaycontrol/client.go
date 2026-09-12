@@ -117,6 +117,16 @@ func (c *Client) TrustBundle() (protocolv1.SigningTrustBundle, error) {
 	}
 	bundle := c.trustBundle
 	bundle.Keys = append([]protocolv1.SigningTrustKey(nil), c.trustBundle.Keys...)
+	for i := range bundle.Keys {
+		if value := bundle.Keys[i].NotBefore; value != nil {
+			copy := *value
+			bundle.Keys[i].NotBefore = &copy
+		}
+		if value := bundle.Keys[i].NotAfter; value != nil {
+			copy := *value
+			bundle.Keys[i].NotAfter = &copy
+		}
+	}
 	return bundle, nil
 }
 

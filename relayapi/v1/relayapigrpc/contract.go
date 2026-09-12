@@ -115,7 +115,7 @@ func TrustBundleToProtocol(bundle *SigningTrustBundle) (protocolv1.SigningTrustB
 }
 
 func RejectUnknownFields(message proto.Message) error {
-	if message == nil {
+	if message == nil || !message.ProtoReflect().IsValid() {
 		return errors.New("protobuf message is required")
 	}
 	return rejectUnknownMessage(message.ProtoReflect(), string(message.ProtoReflect().Descriptor().FullName()))

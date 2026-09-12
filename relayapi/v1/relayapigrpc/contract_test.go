@@ -47,6 +47,17 @@ func TestCredentialAndTrustBundleTypedRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRejectTypedNilProtobufMessages(t *testing.T) {
+	for _, message := range []proto.Message{nil, (*RenewSessionResponse)(nil), (*ReleaseSessionResponse)(nil), (*AuthorizeCredentialResponse)(nil)} {
+		if err := RejectUnknownFields(message); err == nil {
+			t.Fatalf("nil message accepted: %T", message)
+		}
+	}
+	if err := RejectUnknownFields(&RenewSessionResponse{}); err != nil {
+		t.Fatal("valid empty response rejected", err)
+	}
+}
+
 func TestRejectUnknownFieldsRecursesIntoNestedMessages(t *testing.T) {
 	unknown := protowire.AppendTag(nil, 99, protowire.VarintType)
 	unknown = protowire.AppendVarint(unknown, 1)
@@ -83,6 +94,29 @@ func TestUnknownFieldServerInterceptorsRejectUnaryAndStreamMessages(t *testing.T
 
 type unknownTestServerStream struct {
 	unknown []byte
+}
+
+func TestStreamInterceptorWrapsEveryReceivedMessage(t *testing.T) {
+	stream := &unknownTestServerStream{}
+	called := false
+	err := RejectUnknownStreamServerInterceptor("server", stream, &grpc.StreamServerInfo{}, func(server any, wrapped grpc.ServerStream) error {
+		called = true
+		if server != "server" || wrapped == stream {
+			t.Fatal("stream was not wrapped")
+		}
+		if err := wrapped.RecvMsg(&MeshMessage{}); err != nil {
+			t.Fatal(err)
+		}
+		stream.unknown = []byte{0x78, 1}
+		return wrapped.RecvMsg(&MeshMessage{})
+	})
+	if !called || status.Code(err) != codes.InvalidArgument {
+		t.Fatal("later unknown stream message accepted", err)
+	}
+	_, err = RejectUnknownUnaryServerInterceptor(context.Background(), &RenewSessionRequest{}, &grpc.UnaryServerInfo{}, func(context.Context, any) (any, error) { return nil, errors.New("handler result") })
+	if err == nil || err.Error() != "handler result" {
+		t.Fatal("valid unary handler result lost", err)
+	}
 }
 
 func (s *unknownTestServerStream) SetHeader(metadata.MD) error  { return nil }
