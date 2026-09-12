@@ -1,6 +1,6 @@
 # Relay functional test coverage audit
 
-Status: in progress. Scope: only this repository and the Relay product. This
+Status: implementation audited; final CI verification pending. Scope: only this repository and the Relay product. This
 audit does not certify an integrator's Coordinator or production deployment.
 Experimental `relayapi/v1/extensions` types are validation contracts, not active
 dataplane features. No wire or module version change is part of this work.
@@ -25,7 +25,7 @@ dataplane features. No wire or module version change is part of this work.
 
 | Capability | Existing executable evidence | Audit additions / remaining work |
 | --- | --- | --- |
-| TLS public protocol, hello/frame parsing and bounds | `TestProductProtocol`, `TestRelayRequiresExplicitVersionAndForwardsOverTLS13` | Added exact payload/heartbeat limits and strict-frame fuzz target; audit remaining codec branches |
+| TLS public protocol, hello/frame parsing and bounds | `TestProductProtocol`, `TestRelayRequiresExplicitVersionAndForwardsOverTLS13` | Added exact payload/heartbeat limits, malformed credential/signature/identity matrix, stream interception and strict-frame fuzz target |
 | Credentials and trust rotation | `TestProductTrustRotation`, upstream contract tests | Added invalid trust matrix, inclusive/exclusive key validity, unknown key, typed-nil protobuf rejection |
 | Authorization, directed ACL and network isolation | `TestProductAuthorizationControl`, `TestProductCrossNetworkRouting` | Added fresh/stale exact TTL and slow-error boundaries, ownership and bounded-cache replacement regressions |
 | Control client and lease state | `TestRegressionHungHeartbeatMustFence`, `TestProductFencing` | Added nil/invalid replies, epoch/route bounds, atomic rejected-state update and trust ownership |
@@ -34,13 +34,24 @@ dataplane features. No wire or module version change is part of this work.
 | Limits, queues, bandwidth and metrics | `TestProductResources`, admission tests | Added exact bandwidth/replenishment, closed/full queue, concurrent counter and bounded metric-label checks; final E2E pending |
 | Persistent registry, sessions, endpoints | PostgreSQL integration tests; `TestProductSnapshotPersistence` | Added shared Memory/PostgreSQL session matrix and snapshot aliasing/ordering/rollback cases; real PostgreSQL execution pending |
 | SPIFFE identity, trust domain, renewal and outage | `TestProductSPIFFE`, `TestProductSPIREOutage`, custom-domain matrix | Added own-identity revalidation after source rotation, missing SVID, error propagation and recovery |
-| Startup, health/readiness, shutdown and smoke tool | Product trust-bootstrap, snapshot, lifecycle groups | Pending command/helper and readiness semantics audit |
-| Experimental extension validation | `TestContracts`, `TestRejectInvalidAuthorityAndBounds`, `FuzzDiscoveryValidation` | Pending full boundary matrix; no runtime activation claim |
-| Testserver and external-client fixture | `TestUpstreamTestServer`; full E2E | Pending harness failure-path/fixture audit; external client repositories excluded |
+| Startup, health/readiness, shutdown and smoke tool | Product trust-bootstrap, snapshot, lifecycle groups | Added live metrics/readiness transitions, storage outage/recovery, cancellation/timeout, boot IDs, environment parsing and trusted/untrusted TLS smoke checks |
+| Experimental extension validation | `TestContracts`, `TestRejectInvalidAuthorityAndBounds`, `FuzzDiscoveryValidation` | Added address/count/nonce/proof/timing/region/identity boundaries; 100% statement coverage of validators locally, not a runtime activation claim |
+| Testserver and external-client fixture | `TestUpstreamTestServer`; full E2E | Added strict configuration, unauthenticated harness rejection, fixture configuration, scoped leases/replacement/release and explicit unsupported-mesh checks; external client repositories excluded |
 
 The full product scenario inventory and CI execution model are maintained in
 [product-e2e.md](product-e2e.md). This audit must remain marked in progress until
-the pending rows are resolved, not merely until one CI run is green.
+the pending verification rows are resolved, not merely until one narrow CI job is green.
+
+`TestProductMatrixIncludesEveryRegularScenario` checks the actual Go declarations
+against the CI selectors. The explicitly manual `TestProductExtended` soak is
+not silently counted as part of regular E2E. Generated protobuf getters and
+unreachable codec implementation branches are not a substitute for behavioral
+requirements and do not have arbitrary line-coverage targets.
+
+Local bounded fuzz evidence for this audit: `FuzzStrictPublicFrame` executed
+1,173,981 inputs and `FuzzDiscoveryValidation` executed 1,067,169 inputs without
+failure in 5-second requested runs (about 6 seconds including shutdown). These
+are finite fuzz runs, not proof over all possible inputs.
 
 ## Reproduced regressions
 
