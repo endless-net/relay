@@ -16,6 +16,45 @@ require the harness's exact mTLS identity.
 
 ## Executable coverage
 
+### Stateful upstream testserver
+
+[`internal/testserver`](../internal/testserver/server.go) owns the test-only
+implementation of `RelayUpstreamService`: active nodes, directed network-scoped
+ACLs, signing trust, outage/denial/deadline injection and atomic policy replacement.
+It is not an implementation of the integrator's Coordinator. The structure follows
+the stateful protocol-peer approach used by
+[Tailscale testcontrol](https://github.com/tailscale/tailscale/blob/main/tstest/integration/testcontrol/testcontrol.go),
+without importing Tailscale or copying its control-plane implementation.
+
+The same handler runs in two layers:
+
+- `go test -race ./internal/testserver`: a cleanup-owned `httptest.Server` with
+  real HTTP/2, TLS 1.3, authenticated SPIFFE identities and signed credentials;
+  the production upstream client checks trust, directed ACLs, isolation, strict
+  protobuf decoding, caller identity, denial, outage, deadline and recovery.
+- Full product E2E: `e2e/cmd/mock-coordinator` hosts that handler with a real SPIRE
+  Workload API. The actual Relay and Relay Coordinator binaries, PostgreSQL and
+  three-node mesh are not mocked. All groups in the matrix below use this peer.
+
+Only the external upstream is a stateful fake in the full service test. Do not
+replace Relay Coordinator with a mock: it is part of the product under test.
+The existing `relaytest` fixture for external client tests is intentionally
+smaller and is not evidence of complete Relay integration.
+
+### SPIFFE boundary
+
+Do **not** mock SPIFFE authentication or SPIRE in full product E2E. It must cover
+real Workload API bootstrap, exact caller and server identities, trust domains,
+SVID renewal and SPIRE outage/recovery. All identities are ephemeral and isolated;
+no production SPIRE access is required.
+
+Fast testserver tests use an in-memory CA and static certificates containing
+SPIFFE URI identities. TLS verification and identity authorization remain real.
+These tests do not certify Workload API behavior, attestation or certificate
+rotation; those claims belong only to the full SPIRE E2E groups.
+
+### Full service matrix
+
 | Group | Assertions | Owning tests |
 | --- | --- | --- |
 | protocol/auth | TLS 1.3, plaintext/TLS 1.2 rejection, unsupported version/field, malformed and oversized input, maximum payload, local delivery and isolation | `TestProductProtocol` |
