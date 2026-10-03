@@ -1,4 +1,6 @@
-/dist/
-/*.exe
-*.test
-.env
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+.vscode/
+.idea/
