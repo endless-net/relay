@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "component": "relay",
+  "modules": [
+    {
+      "path": ".",
+      "kind": "go"
+    },
+    {
+      "path": "api",
+      "kind": "go"
+    }
+  ],
+  "artifacts": [
+    {
+      "release": "runtime",
+      "kind": "go",
+      "name": "relay",
+      "module": ".",
+      "package": "./cmd/relay",
+      "target": {
+        "os": "linux",
+        "arch": "amd64"
+      }
+    },
+    {
+      "release": "api",
+      "kind": "source",
+      "name": "relay-api",
+      "path": "api"
+    }
+  ]
+}

@@ -1,5 +1,16 @@
 # Relay API: registry и mesh
 
+## Новая MVP-линейка v0
+
+До отдельно объявленного стабильного major новой линейки обратная совместимость
+НЕ поддерживается, включая patch. Все изменения — hard cutover без shims,
+dual API и fallback ради прошлых версий. Данные сохраняются прямыми миграциями.
+API выпускается независимо от runtime обычным тегом `api/v0.MINOR.PATCH`;
+consumer закрепляет точную опубликованную версию без first-party local `replace`
+и обхода через GOWORK. Wire package identifiers не задают SemVer модуля.
+Короткий CI включает unit/static checks, без integration/E2E и Buf breaking.
+Исторические сравнения ниже — provenance, а не обязательство совместимости.
+
 Producer — Relay, RB-relay. Требования находятся в
 [единой спецификации workspace](../../../specs/001-endlessnet-project/spec.md).
 Самостоятельный module — `github.com/endless-net/relay/api`, generated Go/gRPC
@@ -49,7 +60,8 @@ go test -short ./...
 Goimports — exact v0.48.0. Повторяется полный generation/format pipeline,
 сравниваются bytes/SHA256 generated Go files. Узкие исторические lint exceptions
 объясняют сохранённые package path/RelayControl/RelayMesh/Connect naming;
-STANDARD остальные и breaking FILE действуют.
+Остальные STANDARD действуют. Breaking FILE остаётся только историческим
+анализом и не блокирует выпуск новой v0-линейки.
 
 Новая API-линия не опубликована; будущий `api/v<semver>` tag независим от wire
 `endlessnet.relay.v1` и runtime. Published supported `api/` baseline первого

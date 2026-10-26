@@ -86,3 +86,24 @@ upstream authorization или TTL/revocation budgets. Relay передаёт opa
 Signing — purpose trust. Provision/host/deploy/activation находятся во внешнем
 платформенном контуре вне активного состава; эти функции не переходят Relay или
 Service Kit. Место и owner требуют отдельного решения COMPOSITION-Q-01.
+
+## MVP v0 и цикл 002
+
+Новая v0-линейка НЕ поддерживает backward compatibility до отдельного объявления
+стабильного major новой линейки, включая patch. Изменения — hard cutover, без
+shims, dual API и fallback ради прошлых версий. Сохраняемые данные обновляются
+прямыми миграциями; скрытый reset запрещён. Runtime и api/v0.* версионируются
+независимо, first-party local replace и обход pin через GOWORK запрещены.
+
+Профиль .ci/profile.json явно перечисляет все собственные модули и outputs.
+Базовый CI: format/lint, go vet, go test -short и govulncheck для Go, применимые
+Dart/JSON unit/static checks. Integration/E2E и тесты прежних версий в обязательный
+MVP gate не входят. Отсутствие unit cases у пустого main фиксируется без выдуманного
+покрытия. Собираемый пустой main явно запрошен пользователем для проверки поставки;
+он не реализует доменную логику, БД, handlers или сетевой runtime.
+
+Автономные команды: python3 -B scripts/ci.py check и build; unit tooling — scripts/test_ci.py.
+Kit не загружается, собственные публичные lint configs остаются у владельца.
+Release допускается только по push обычного v0-тега после exact commit checks и
+сборки. API-тег выбирает только source/SDK, runtime-тег — runtime outputs.
+Spec Kit и общая конституция находятся только в workspace.
