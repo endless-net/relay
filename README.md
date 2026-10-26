@@ -5,6 +5,9 @@
 Пустой Go entrypoint cmd/relay/main.go проверяет механизм сборки/поставки.
 Продуктовая логика и внешние подключения не реализованы.
 Профиль модулей и артефактов: [.ci/profile.json](.ci/profile.json).
+Helper build/publish требует чистый committed checkout до и после сборки.
+Output размещается вне checkout либо в ignored каталоге `.artifacts`.
+Локальные изменения проверяются командой check; они не публикуются как bytes HEAD.
 Branch CI проверяет код и собирает outputs. Push обычного v0.MINOR.PATCH выпускает
 runtime/source; независимый api/v0.MINOR.PATCH — только API/SDK, где объявлено.
 Новая v0-линейка не поддерживает обратную совместимость, включая patch;

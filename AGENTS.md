@@ -55,23 +55,28 @@ Service Kit или приватного workspace, их credentials, код, wor
 
 ## Проверки владельца
 
-Существующий Go-модуль — `api/`; его локальный публичный lint config —
-`api/.golangci-lint.yaml`, без загрузки private конфигурации. Из `api/` выполнять
-последовательно:
+Собственные Go-модули — корневой `go.mod` и независимый `api/go.mod`; каждый
+использует свою `.golangci-lint.yaml`, без загрузки private конфигурации.
+Из корня каждого модуля в Ubuntu 26.04 выполнять базовый набор:
 
 ```bash
-goimports -w .
+goimports -l .
 go vet ./...
 golangci-lint run --config .golangci-lint.yaml ./... --timeout 1m
 go test -short ./...
 govulncheck ./...
-go build ./...
 ```
 
-Версии инструментов, Buf format/build/lint/breaking, repeat generation и
-producer-specific fixtures описаны в [контрактном README](api/README.md).
-Generated outputs не редактировать вручную; отсутствие published baseline
-фиксировать явно. Новые модули не создавать ради формального запуска Go checks.
+Непустой вывод `goimports -l` означает ошибку форматирования; исправления
+просматриваются отдельно. Корневой `cmd/relay/main.go` — пустой сборочный каркас,
+а не реализация dataplane/registry. Сборка Linux amd64 выполняется отдельно
+командой `python3 -B scripts/ci.py build`.
+
+Версии инструментов и producer-owned generation/fixtures описаны в
+[контрактном README](api/README.md). При изменении схемы использовать закреплённые
+Buf build/lint и воспроизводимую генерацию; generated outputs вручную не менять.
+Buf breaking и проверки прежних producer/consumer пар не являются обязательным
+v0 gate; исторические comparisons не требуют compatibility layer.
 
 Внешний JSON dataplane отдельно проверяется командой из корня репозитория:
 
@@ -81,8 +86,9 @@ python3 api/checks/verify_public_wire.py
 
 Зависимости JSON-проверки устанавливать вне репозитория в изолированную среду.
 Контрактные shape/byte/semantic fixtures не подтверждают production signatures,
-upstream authorization или TTL/revocation budgets. Relay передаёт opaque payload,
-владеет registry/leases/fencing; Coordinator остаётся authority Network/Node pair,
+upstream authorization или TTL/revocation budgets. По карте владельцев Relay
+отвечает за opaque payload и registry/leases/fencing; пустой main их не реализует.
+Coordinator остаётся authority Network/Node pair,
 Signing — purpose trust. Provision/host/deploy/activation находятся во внешнем
 платформенном контуре вне активного состава; эти функции не переходят Relay или
 Service Kit. Место и owner требуют отдельного решения COMPOSITION-Q-01.
@@ -93,7 +99,8 @@ Service Kit. Место и owner требуют отдельного решен�
 стабильного major новой линейки, включая patch. Изменения — hard cutover, без
 shims, dual API и fallback ради прошлых версий. Сохраняемые данные обновляются
 прямыми миграциями; скрытый reset запрещён. Runtime и api/v0.* версионируются
-независимо, first-party local replace и обход pin через GOWORK запрещены.
+независимо. Consumer закрепляет точную версию producer API; `@latest`, first-party
+local replace и обход pin через GOWORK запрещены.
 
 Профиль .ci/profile.json явно перечисляет все собственные модули и outputs.
 Базовый CI: format/lint, go vet, go test -short и govulncheck для Go, применимые

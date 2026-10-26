@@ -87,6 +87,12 @@ def load_profile(root, path):
     expected = {m["path"] for m in data["modules"] if m["kind"] == "go"}
     if present != expected:
         raise ValueError("every owned Go module must be declared")
+    packages = {manifest.parent.relative_to(root).as_posix()
+                for manifest in root.rglob("pubspec.yaml")
+                if not any(part in ignored for part in manifest.relative_to(root).parts)}
+    expected_packages = {m["path"] for m in data["modules"] if m["kind"] in {"dart", "flutter"}}
+    if packages != expected_packages:
+        raise ValueError("every owned Dart/Flutter package must be declared")
     outputs = set()
     for artifact in data["artifacts"]:
         if set(artifact) - {"release", "kind", "name", "module", "package", "path", "target"}:
@@ -237,6 +243,31 @@ def write_archive(path, entries):
                         output.addfile(info, io.BytesIO(content))
 
 
+def clean_commit(root):
+    checkout = Path(command(["git", "rev-parse", "--show-toplevel"], cwd=root, capture=True)).resolve()
+    if checkout != root.resolve():
+        raise ValueError("source must be the root of its committed Git checkout")
+    sha = command(["git", "rev-parse", "--verify", "HEAD^{commit}"], cwd=root, capture=True)
+    if command(["git", "status", "--porcelain=v1", "--untracked-files=all"], cwd=root, capture=True):
+        raise ValueError("source checkout must be clean: tracked or untracked inputs changed")
+    return sha
+
+
+def validate_output_location(root, output):
+    output = output.resolve()
+    if output.is_relative_to(root.resolve()):
+        relative = output.relative_to(root.resolve())
+        if relative == Path(".") or ".git" in relative.parts:
+            raise ValueError("build output must be outside source or in an ignored directory")
+        try:
+            command(["git", "check-ignore", "--quiet", "--", relative.as_posix() + "/"], cwd=root)
+        except subprocess.CalledProcessError as error:
+            if error.returncode != 1:
+                raise
+            raise ValueError("build output inside source must be ignored by Git") from error
+    return output
+
+
 def build(root, profile, output, tag=None):
     if tag and not TAG.fullmatch(tag):
         raise ValueError("only ordinary v0 tags can be released")
@@ -244,7 +275,8 @@ def build(root, profile, output, tag=None):
     selected = [a for a in profile["artifacts"] if not tag or a["release"] == subset]
     if not selected:
         raise ValueError("selected release has no artifacts")
-    sha = command(["git", "rev-parse", "HEAD"], cwd=root, capture=True)
+    sha = clean_commit(root)
+    output = validate_output_location(root, output)
     version = tag.replace("/", "-") if tag else sha[:12]
     output.mkdir(parents=True, exist_ok=True)
     if any(output.iterdir()):
@@ -269,6 +301,8 @@ def build(root, profile, output, tag=None):
             raise ValueError("Flutter native packaging is supplied by its native workflow")
         write_archive(destination, entries)
         print("BUILT", destination.name, flush=True)
+    if clean_commit(root) != sha:
+        raise ValueError("source commit changed during build")
     names = sorted(p.name for p in output.iterdir())
     checksum_lines = [hashlib.sha256((output / name).read_bytes()).hexdigest() + "  " + name
                       for name in names]
@@ -321,7 +355,9 @@ def publish(root, profile, output, tag, sha):
         raise ValueError("invalid release identity")
     if os.environ.get("GITHUB_EVENT_NAME") != "push" or os.environ.get("GITHUB_REF") != "refs/tags/" + tag:
         raise ValueError("publication requires the matching push tag event")
-    if command(["git", "rev-parse", "HEAD"], cwd=root, capture=True) != sha or remote_tag(root, tag) != sha:
+    head = clean_commit(root)
+    output = validate_output_location(root, output)
+    if head != sha or remote_tag(root, tag) != sha:
         raise ValueError("source/remote tag commit differs")
     names = verify_output(output, sha, tag, profile)
     repository = os.environ.get("GITHUB_REPOSITORY", "")
