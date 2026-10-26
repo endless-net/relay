@@ -1,0 +1,5 @@
+{
+  "addr": "relay.example.invalid:443",
+  "protocol": "relay-v1-tls",
+  "priority": 0
+}

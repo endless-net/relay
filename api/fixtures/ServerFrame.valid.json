@@ -1,0 +1,7 @@
+{
+  "type": "server_frame",
+  "protocol_version": 1,
+  "from_node_id": "node-A",
+  "from_network_id": "network-A",
+  "payload": "AAH/EA=="
+}

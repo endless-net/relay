@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "active_key_id": "ed25519:Yw3NKWbEM2aRElRIu7JbT_QSpJxzLbLIq8G4WBvXEN0",
+  "keys": [
+    {
+      "key_id": "ed25519:Yw3NKWbEM2aRElRIu7JbT_QSpJxzLbLIq8G4WBvXEN0",
+      "algorithm": "ed25519",
+      "public_key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "not_before": "2030-01-01T00:00:00Z",
+      "not_after": "2030-01-01T00:02:00Z"
+    }
+  ],
+  "unknown_extension": true
+}

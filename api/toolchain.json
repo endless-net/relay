@@ -1,0 +1,32 @@
+{
+  "status": "candidate-unreleased",
+  "source": {
+    "repository": "https://github.com/endless-net/relay",
+    "revision": "63b65114dc2db99db1788ce3e4781f634690cfb8",
+    "schema_paths": [
+      "proto/relay/v1/relay.proto"
+    ]
+  },
+  "buf": "1.50.0",
+  "protoc-gen-go": "v1.36.10",
+  "protoc-gen-go-grpc": "v1.5.1",
+  "go": "1.26.0 minimum",
+  "remote_plugins": false,
+  "schema_registry": false,
+  "module": "github.com/endless-net/relay/api",
+  "published_breaking_baseline": null,
+  "historical_comparison_is_release_baseline": false,
+  "excluded_callback": {
+    "path": "proto/relay/v1/upstream.proto",
+    "revision": "63b65114dc2db99db1788ce3e4781f634690cfb8",
+    "authority": "Coordinator/Signing; EDGE-Q05"
+  },
+  "runtime_dependencies": {
+    "google.golang.org/grpc": "v1.83.2",
+    "google.golang.org/protobuf": "v1.36.11",
+    "golang.org/x/net": "v0.60.0",
+    "golang.org/x/sys": "v0.48.0",
+    "golang.org/x/text": "v0.42.0"
+  },
+  "goimports": "v0.48.0"
+}

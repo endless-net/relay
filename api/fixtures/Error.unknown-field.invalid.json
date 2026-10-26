@@ -1,0 +1,6 @@
+{
+  "type": "error",
+  "protocol_version": 1,
+  "error": "relay peer is unavailable",
+  "unknown_extension": true
+}
