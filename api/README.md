@@ -63,9 +63,10 @@ Goimports — exact v0.48.0. Повторяется полный generation/form
 Остальные STANDARD действуют. Breaking FILE остаётся только историческим
 анализом и не блокирует выпуск новой v0-линейки.
 
-Новая API-линия не опубликована; будущий `api/v<semver>` tag независим от wire
-`endlessnet.relay.v1` и runtime. Published supported `api/` baseline первого
-выпуска отсутствует. [migration.json](migration.json) фиксирует 2 намеренно
+Первый выпуск новой API-линейки — `api/v0.1.0`, commit
+`6e9e7c04334047f489979e7454709bfdc77c1a11`. Он независим от wire
+`endlessnet.relay.v1` и runtime; consumers закрепляют `github.com/endless-net/relay/api v0.1.0`.
+Поддержки прошлых версий нет. [migration.json](migration.json) фиксирует 2 намеренно
 несовместимых historical findings: Go import переход `relayapi/` → `api/` и
 quarantine upstream.proto. Сравнение нормализованных оставшихся wire shapes
 проходит; это не скрывает удаления callback и не является release baseline.
