@@ -1,0 +1,350 @@
+[
+  {
+    "name": "Endpoint.valid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Endpoint",
+    "instance": "fixtures/Endpoint.valid.json",
+    "valid": true
+  },
+  {
+    "name": "Endpoint.unknown-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Endpoint",
+    "instance": "fixtures/Endpoint.unknown-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "Endpoint.missing-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Endpoint",
+    "instance": "fixtures/Endpoint.missing-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "EndpointSnapshot.valid",
+    "schema": "schemas/public-wire.schema.json#/$defs/EndpointSnapshot",
+    "instance": "fixtures/EndpointSnapshot.valid.json",
+    "valid": true
+  },
+  {
+    "name": "EndpointSnapshot.unknown-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/EndpointSnapshot",
+    "instance": "fixtures/EndpointSnapshot.unknown-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "EndpointSnapshot.missing-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/EndpointSnapshot",
+    "instance": "fixtures/EndpointSnapshot.missing-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "Credential.valid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Credential",
+    "instance": "fixtures/Credential.valid.json",
+    "valid": true
+  },
+  {
+    "name": "Credential.unknown-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Credential",
+    "instance": "fixtures/Credential.unknown-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "Credential.missing-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Credential",
+    "instance": "fixtures/Credential.missing-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "SigningTrustKey.valid",
+    "schema": "schemas/public-wire.schema.json#/$defs/SigningTrustKey",
+    "instance": "fixtures/SigningTrustKey.valid.json",
+    "valid": true
+  },
+  {
+    "name": "SigningTrustKey.unknown-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/SigningTrustKey",
+    "instance": "fixtures/SigningTrustKey.unknown-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "SigningTrustKey.missing-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/SigningTrustKey",
+    "instance": "fixtures/SigningTrustKey.missing-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "SigningTrustBundle.valid",
+    "schema": "schemas/public-wire.schema.json#/$defs/SigningTrustBundle",
+    "instance": "fixtures/SigningTrustBundle.valid.json",
+    "valid": true
+  },
+  {
+    "name": "SigningTrustBundle.unknown-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/SigningTrustBundle",
+    "instance": "fixtures/SigningTrustBundle.unknown-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "SigningTrustBundle.missing-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/SigningTrustBundle",
+    "instance": "fixtures/SigningTrustBundle.missing-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "ClientHello.valid",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientHello",
+    "instance": "fixtures/ClientHello.valid.json",
+    "valid": true
+  },
+  {
+    "name": "ClientHello.unknown-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientHello",
+    "instance": "fixtures/ClientHello.unknown-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "ClientHello.missing-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientHello",
+    "instance": "fixtures/ClientHello.missing-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "ClientFrame.valid",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientFrame",
+    "instance": "fixtures/ClientFrame.valid.json",
+    "valid": true
+  },
+  {
+    "name": "ClientFrame.unknown-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientFrame",
+    "instance": "fixtures/ClientFrame.unknown-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "ClientFrame.missing-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientFrame",
+    "instance": "fixtures/ClientFrame.missing-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "ServerFrame.valid",
+    "schema": "schemas/public-wire.schema.json#/$defs/ServerFrame",
+    "instance": "fixtures/ServerFrame.valid.json",
+    "valid": true
+  },
+  {
+    "name": "ServerFrame.unknown-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/ServerFrame",
+    "instance": "fixtures/ServerFrame.unknown-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "ServerFrame.missing-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/ServerFrame",
+    "instance": "fixtures/ServerFrame.missing-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "Ready.valid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Ready",
+    "instance": "fixtures/Ready.valid.json",
+    "valid": true
+  },
+  {
+    "name": "Ready.unknown-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Ready",
+    "instance": "fixtures/Ready.unknown-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "Ready.missing-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Ready",
+    "instance": "fixtures/Ready.missing-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "Error.valid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Error",
+    "instance": "fixtures/Error.valid.json",
+    "valid": true
+  },
+  {
+    "name": "Error.unknown-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Error",
+    "instance": "fixtures/Error.unknown-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "Error.missing-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Error",
+    "instance": "fixtures/Error.missing-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "Heartbeat.valid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Heartbeat",
+    "instance": "fixtures/Heartbeat.valid.json",
+    "valid": true
+  },
+  {
+    "name": "Heartbeat.unknown-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Heartbeat",
+    "instance": "fixtures/Heartbeat.unknown-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "Heartbeat.missing-field.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Heartbeat",
+    "instance": "fixtures/Heartbeat.missing-field.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "Endpoint.blank-id.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Endpoint",
+    "instance": "fixtures/Endpoint.blank-id.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "Endpoint.protocol.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Endpoint",
+    "instance": "fixtures/Endpoint.protocol.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "Endpoint.negative-priority.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Endpoint",
+    "instance": "fixtures/Endpoint.negative-priority.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "ClientHello.heartbeat-0",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientHello",
+    "instance": "fixtures/ClientHello.heartbeat-0.json",
+    "valid": true
+  },
+  {
+    "name": "ClientHello.heartbeat-100",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientHello",
+    "instance": "fixtures/ClientHello.heartbeat-100.json",
+    "valid": true
+  },
+  {
+    "name": "ClientHello.heartbeat-30000",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientHello",
+    "instance": "fixtures/ClientHello.heartbeat-30000.json",
+    "valid": true
+  },
+  {
+    "name": "ClientHello.heartbeat-99",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientHello",
+    "instance": "fixtures/ClientHello.heartbeat-99.json",
+    "valid": false
+  },
+  {
+    "name": "ClientHello.heartbeat-30001",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientHello",
+    "instance": "fixtures/ClientHello.heartbeat-30001.json",
+    "valid": false
+  },
+  {
+    "name": "ClientHello.heartbeat--1",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientHello",
+    "instance": "fixtures/ClientHello.heartbeat--1.json",
+    "valid": false
+  },
+  {
+    "name": "Credential.legacy-algorithm.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Credential",
+    "instance": "fixtures/Credential.legacy-algorithm.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "Credential.bad-expiry.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Credential",
+    "instance": "fixtures/Credential.bad-expiry.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "Credential.padded-signature.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Credential",
+    "instance": "fixtures/Credential.padded-signature.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "Credential.blank-network.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/Credential",
+    "instance": "fixtures/Credential.blank-network.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "ClientFrame.foreign-kind.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientFrame",
+    "instance": "fixtures/ClientFrame.foreign-kind.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "ClientFrame.future-version.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientFrame",
+    "instance": "fixtures/ClientFrame.future-version.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "ClientFrame.blank-peer.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientFrame",
+    "instance": "fixtures/ClientFrame.blank-peer.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "ClientFrame.blank-network.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientFrame",
+    "instance": "fixtures/ClientFrame.blank-network.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "ClientFrame.empty-payload.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientFrame",
+    "instance": "fixtures/ClientFrame.empty-payload.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "ClientFrame.invalid-base64.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientFrame",
+    "instance": "fixtures/ClientFrame.invalid-base64.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "ClientFrame.payload-65535",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientFrame",
+    "instance": "fixtures/ClientFrame.payload-65535.json",
+    "valid": true
+  },
+  {
+    "name": "ClientFrame.payload-65536",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientFrame",
+    "instance": "fixtures/ClientFrame.payload-65536.json",
+    "valid": true
+  },
+  {
+    "name": "ClientFrame.payload-65537",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientFrame",
+    "instance": "fixtures/ClientFrame.payload-65537.json",
+    "valid": false
+  },
+  {
+    "name": "ClientFrame.payload-65538",
+    "schema": "schemas/public-wire.schema.json#/$defs/ClientFrame",
+    "instance": "fixtures/ClientFrame.payload-65538.json",
+    "valid": false
+  },
+  {
+    "name": "WireMessage.unknown-kind.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/WireMessage",
+    "instance": "fixtures/WireMessage.unknown-kind.invalid.json",
+    "valid": false
+  },
+  {
+    "name": "EndpointSnapshot.version-overflow.invalid",
+    "schema": "schemas/public-wire.schema.json#/$defs/EndpointSnapshot",
+    "instance": "fixtures/EndpointSnapshot.version-overflow.invalid.json",
+    "valid": false
+  }
+]

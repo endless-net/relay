@@ -1,0 +1,7 @@
+{
+  "type": "client_frame",
+  "protocol_version": 2,
+  "peer_id": "node-B",
+  "peer_network_id": "network-B",
+  "payload": "AAH/EA=="
+}

@@ -1,0 +1,79 @@
+name: MVP CI
+on:
+  push:
+    branches: ['**']
+    tags: ['v0.*', 'api/v0.*']
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+jobs:
+  checks:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify baseline
+        run: |
+          . /etc/os-release
+          test "$ID" = ubuntu
+          test "$VERSION_ID" = 26.04
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: JSON unit dependencies
+        run: python -m pip install --disable-pip-version-check 'jsonschema[format]==4.25.1' referencing==0.37.0
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - name: Install pinned Go check tools
+        run: bash scripts/install-ci-tools.sh
+      - name: Profile and publisher unit fixtures
+        run: python -B scripts/test_ci.py
+      - name: All declared short checks
+        run: python -B scripts/ci.py check
+      - name: Build declared artifacts
+        env:
+          REF: ${{ github.ref }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "$REF" == refs/tags/* ]]; then
+            python -B scripts/ci.py build --tag "$TAG"
+          else
+            python -B scripts/ci.py build
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: relay-validation-${{ github.sha }}
+          path: .artifacts
+          if-no-files-found: error
+          include-hidden-files: true
+          compression-level: 0
+  release:
+    needs: checks
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: relay-validation-${{ github.sha }}
+          path: .artifacts
+      - name: Publish exact checked tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: python3 -B scripts/ci.py publish --tag "$TAG" --sha "$SOURCE_SHA"

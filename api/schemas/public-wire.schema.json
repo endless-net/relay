@@ -1,0 +1,384 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:endlessnet:relay:public-wire:v1",
+  "title": "Relay v1 public JSON migration candidate",
+  "$defs": {
+    "Endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+        },
+        "addr": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+        },
+        "protocol": {
+          "const": "relay-v1-tls"
+        },
+        "region": {
+          "type": "string",
+          "pattern": "^(?:$|\\S(?:[\\s\\S]*\\S)?)$"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "addr",
+        "protocol",
+        "priority"
+      ]
+    },
+    "EndpointSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9223372036854775807
+        },
+        "endpoints": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/Endpoint"
+          }
+        }
+      },
+      "required": [
+        "version",
+        "endpoints"
+      ]
+    },
+    "Credential": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "const": "ed25519-relay-credential-v3"
+        },
+        "key_id": {
+          "type": "string",
+          "pattern": "^ed25519:[A-Za-z0-9_-]{43}$"
+        },
+        "network_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+        },
+        "node_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\\.[0-9]{1,9})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$"
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{86}$"
+        }
+      },
+      "required": [
+        "algorithm",
+        "key_id",
+        "network_id",
+        "node_id",
+        "expires_at",
+        "signature"
+      ]
+    },
+    "SigningTrustKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "key_id": {
+          "type": "string",
+          "pattern": "^ed25519:[A-Za-z0-9_-]{43}$"
+        },
+        "algorithm": {
+          "const": "ed25519"
+        },
+        "public_key": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{43}$"
+        },
+        "not_before": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\\.[0-9]{1,9})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "not_after": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\\.[0-9]{1,9})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "key_id",
+        "algorithm",
+        "public_key"
+      ]
+    },
+    "SigningTrustBundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "active_key_id": {
+          "type": "string",
+          "pattern": "^ed25519:[A-Za-z0-9_-]{43}$"
+        },
+        "keys": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/SigningTrustKey"
+          }
+        }
+      },
+      "required": [
+        "version",
+        "active_key_id",
+        "keys"
+      ]
+    },
+    "ClientHello": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "client_hello"
+        },
+        "protocol_version": {
+          "const": 1
+        },
+        "credential": {
+          "$ref": "#/$defs/Credential"
+        },
+        "heartbeat_interval_ms": {
+          "type": "integer",
+          "anyOf": [
+            {
+              "const": 0
+            },
+            {
+              "minimum": 100,
+              "maximum": 30000
+            }
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "protocol_version",
+        "credential"
+      ]
+    },
+    "ClientFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "client_frame"
+        },
+        "protocol_version": {
+          "const": 1
+        },
+        "peer_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+        },
+        "peer_network_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+        },
+        "payload": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 87384,
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+          "allOf": [
+            {
+              "if": {
+                "minLength": 87384
+              },
+              "then": {
+                "pattern": "==$"
+              }
+            }
+          ],
+          "description": "Standard padded base64 of 1..65536 opaque bytes; maximum-length text must encode exactly 65536 bytes."
+        }
+      },
+      "required": [
+        "type",
+        "protocol_version",
+        "peer_id",
+        "peer_network_id",
+        "payload"
+      ]
+    },
+    "ServerFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "server_frame"
+        },
+        "protocol_version": {
+          "const": 1
+        },
+        "from_node_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+        },
+        "from_network_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+        },
+        "payload": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 87384,
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+          "allOf": [
+            {
+              "if": {
+                "minLength": 87384
+              },
+              "then": {
+                "pattern": "==$"
+              }
+            }
+          ],
+          "description": "Standard padded base64 of 1..65536 opaque bytes; maximum-length text must encode exactly 65536 bytes."
+        }
+      },
+      "required": [
+        "type",
+        "protocol_version",
+        "from_node_id",
+        "from_network_id",
+        "payload"
+      ]
+    },
+    "Ready": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "ready"
+        },
+        "protocol_version": {
+          "const": 1
+        },
+        "ready": {
+          "const": true
+        }
+      },
+      "required": [
+        "type",
+        "protocol_version",
+        "ready"
+      ]
+    },
+    "Error": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "error"
+        },
+        "protocol_version": {
+          "const": 1
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "protocol_version",
+        "error"
+      ]
+    },
+    "Heartbeat": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "heartbeat"
+        },
+        "protocol_version": {
+          "const": 1
+        },
+        "time": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\\.[0-9]{1,9})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$"
+        }
+      },
+      "required": [
+        "type",
+        "protocol_version",
+        "time"
+      ]
+    },
+    "WireMessage": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ClientHello"
+        },
+        {
+          "$ref": "#/$defs/ClientFrame"
+        },
+        {
+          "$ref": "#/$defs/ServerFrame"
+        },
+        {
+          "$ref": "#/$defs/Ready"
+        },
+        {
+          "$ref": "#/$defs/Error"
+        },
+        {
+          "$ref": "#/$defs/Heartbeat"
+        }
+      ]
+    }
+  },
+  "$ref": "#/$defs/WireMessage"
+}

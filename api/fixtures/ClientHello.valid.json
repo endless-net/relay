@@ -1,0 +1,12 @@
+{
+  "type": "client_hello",
+  "protocol_version": 1,
+  "credential": {
+    "algorithm": "ed25519-relay-credential-v3",
+    "key_id": "ed25519:Yw3NKWbEM2aRElRIu7JbT_QSpJxzLbLIq8G4WBvXEN0",
+    "network_id": "network-A",
+    "node_id": "node-A",
+    "expires_at": "2030-01-01T00:01:00Z",
+    "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "status": "candidate-unreleased",
+  "historical_source_revision": "63b65114dc2db99db1788ce3e4781f634690cfb8",
+  "published_api_baseline": null,
+  "published_breaking_check": "not applicable: first api/ release has no published supported predecessor",
+  "migration_comparisons": [
+    {
+      "comparison": "historical_migration",
+      "exit_code": 100,
+      "findings": 2,
+      "rules": {
+        "FILE_NO_DELETE": 1,
+        "FILE_SAME_GO_PACKAGE": 1
+      },
+      "status": "incompatible; not a supported-version pass"
+    }
+  ],
+  "normalized_historical_comparison": {
+    "exit_code": 0,
+    "normalization": "new go_package; Relay callback removed from comparison as quarantined foreign authority",
+    "scope": "only remaining wire shapes; does not erase incompatible migration findings"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "status": "unreleased-migration-candidate",
+  "owner": "services/relay",
+  "runtime_implementation": false,
+  "production_compatibility_claim": false,
+  "source": {
+    "revision": "63b65114dc2db99db1788ce3e4781f634690cfb8",
+    "paths": [
+      "relayapi/v1/protocol.go",
+      "relayapi/v1/protocol_test.go",
+      "internal/relay/relay.go"
+    ]
+  },
+  "schema_id": "urn:endlessnet:relay:public-wire:v1",
+  "fixture_manifest": "fixtures/cases.json",
+  "wire_vectors": "wire-vectors.json",
+  "offline_checker": "checks/verify_public_wire.py",
+  "wire": {
+    "endpoint_protocol": "relay-v1-tls",
+    "version": 1,
+    "encoding": "UTF-8 newline-delimited JSON; one object per line",
+    "line_delimiter_hex": "0a",
+    "max_line_bytes": 147456,
+    "max_payload_decoded_bytes": 65536,
+    "payload_encoding": "standard padded base64",
+    "credential_algorithm": "ed25519-relay-credential-v3",
+    "trust_bundle_version": 1,
+    "heartbeat_interval_ms": {
+      "omitted_or_zero": "server policy",
+      "minimum_nonzero": 100,
+      "maximum": 30000
+    }
+  },
+  "not_verified": [
+    "TLS peer verification",
+    "credential signature verification",
+    "authenticated trust bootstrap and rotation",
+    "pair authorization",
+    "cache/lease/revocation budgets",
+    "production flow termination"
+  ],
+  "experimental_extensions_included": false,
+  "private_key_helpers_included": false
+}

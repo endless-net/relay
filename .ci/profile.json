@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "component": "relay",
+  "modules": [
+    {
+      "path": "api",
+      "kind": "go"
+    }
+  ],
+  "artifacts": [
+    {
+      "release": "api",
+      "kind": "source",
+      "name": "relay-api",
+      "path": "api"
+    }
+  ]
+}
