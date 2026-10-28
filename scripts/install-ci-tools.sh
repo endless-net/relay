@@ -13,3 +13,5 @@ tar -xzf "$scratch/$archive" --strip-components=1 -C "$destination" "golangci-li
 printf '%s\n' "$destination" >> "${GITHUB_PATH:?}"
 go install golang.org/x/tools/cmd/goimports@v0.48.0
 go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+
+go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0

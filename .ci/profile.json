@@ -3,11 +3,37 @@
   "component": "relay",
   "modules": [
     {
+      "path": ".",
+      "kind": "go"
+    },
+    {
       "path": "api",
       "kind": "go"
     }
   ],
   "artifacts": [
+    {
+      "release": "runtime",
+      "kind": "go",
+      "name": "relay",
+      "module": ".",
+      "package": "./cmd/relay",
+      "target": {
+        "os": "linux",
+        "arch": "amd64"
+      }
+    },
+    {
+      "release": "runtime",
+      "kind": "go",
+      "name": "relay-coordinator",
+      "module": ".",
+      "package": "./cmd/relay-coordinator",
+      "target": {
+        "os": "linux",
+        "arch": "amd64"
+      }
+    },
     {
       "release": "api",
       "kind": "source",

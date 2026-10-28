@@ -3,6 +3,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import subprocess
 from types import SimpleNamespace
 import tempfile
 import unittest
@@ -14,6 +15,130 @@ spec.loader.exec_module(ci)
 
 
 class PublicCI(unittest.TestCase):
+    def committed_checkout(self, root):
+        root.mkdir()
+        (root / ".gitignore").write_text(".artifacts/\n", encoding="utf-8")
+        (root / "main.go").write_text("package main\nfunc main() {}\n", encoding="utf-8")
+        for args in (["init", "-q"], ["config", "core.autocrlf", "false"],
+                     ["add", "."], ["-c", "user.name=Fixture", "-c",
+                     "user.email=fixture@example.invalid", "commit", "-qm", "fixture"]):
+            subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+        return ci.command(["git", "rev-parse", "HEAD"], cwd=root, capture=True)
+
+    def source_profile(self):
+        return {"component": "fixture", "artifacts": [
+            {"release": "runtime", "kind": "source", "name": "runtime", "path": "."},
+            {"release": "api", "kind": "source", "name": "api", "path": "."}]}
+
+    def test_build_rejects_dirty_tracked_and_untracked_inputs_before_packaging(self):
+        for filename in ("main.go", "untracked.go"):
+            for tag in (None, "v0.1.0", "api/v0.1.0"):
+                with self.subTest(filename=filename, tag=tag), tempfile.TemporaryDirectory() as temp:
+                    root = Path(temp) / "repo"
+                    self.committed_checkout(root)
+                    (root / filename).write_text("changed input", encoding="utf-8")
+                    with patch.object(ci, "archive_bytes") as archive:
+                        with self.assertRaisesRegex(ValueError, "clean"):
+                            ci.build(root, self.source_profile(), root / ".artifacts", tag)
+                        archive.assert_not_called()
+
+    def test_build_rejects_source_mutation_and_commit_change_during_compilation(self):
+        for mutation in ("tracked", "untracked", "commit"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp) / "repo"
+                self.committed_checkout(root)
+                profile = {"component": "fixture", "artifacts": [{
+                    "release": "runtime", "kind": "go", "name": "fixture", "module": ".",
+                    "package": "./cmd/fixture", "target": {"os": "linux", "arch": "amd64"}}]}
+                real_command = ci.command
+                def compile_and_mutate(args, cwd=None, capture=False, env=None):
+                    if args[:2] == ["go", "build"]:
+                        Path(args[args.index("-o") + 1]).write_bytes(b"compiled fixture")
+                        (root / ("untracked.go" if mutation == "untracked" else "main.go")).write_text(
+                            "changed input", encoding="utf-8")
+                        if mutation == "commit":
+                            real_command(["git", "add", "."], cwd=root)
+                            real_command(["git", "-c", "user.name=Fixture", "-c",
+                                          "user.email=fixture@example.invalid", "commit", "-qm", "changed"], cwd=root)
+                        return ""
+                    return real_command(args, cwd=cwd, capture=capture, env=env)
+                with patch.object(ci, "command", side_effect=compile_and_mutate):
+                    with self.assertRaisesRegex(ValueError, "clean|commit changed"):
+                        ci.build(root, profile, root / ".artifacts", "v0.1.0")
+                self.assertFalse((root / ".artifacts/source.json").exists())
+
+    def test_build_requires_committed_checkout_and_ignored_or_external_output(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "repo"
+            self.committed_checkout(root)
+            with self.assertRaisesRegex(ValueError, "output.*ignored|ignored.*output"):
+                ci.build(root, self.source_profile(), root / "unignored-output")
+            ci.build(root, self.source_profile(), root / ".artifacts", "v0.1.0")
+            ci.build(root, self.source_profile(), Path(temp) / "external", "api/v0.1.0")
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True, capture_output=True)
+            with self.assertRaises((ValueError, subprocess.CalledProcessError)):
+                ci.build(root, self.source_profile(), root / ".artifacts")
+
+    def test_dirty_publish_is_rejected_before_any_github_operation(self):
+        for filename in ("main.go", "untracked.go"):
+            with self.subTest(filename=filename), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp) / "repo"
+                sha = self.committed_checkout(root)
+                output = self.output(root)
+                # The output is an ignored build directory, independent of source mutations.
+                output.rename(root / ".artifacts")
+                output = root / ".artifacts"
+                identity = json.loads((output / "source.json").read_text())
+                identity["commit"] = sha
+                (output / "source.json").write_text(json.dumps(identity))
+                (root / filename).write_text("changed input", encoding="utf-8")
+                real_run = subprocess.run
+                def forbid_github(args, *positional, **kwargs):
+                    if args[0] == "gh":
+                        self.fail("dirty source reached a GitHub operation")
+                    return real_run(args, *positional, **kwargs)
+                with patch.dict(os.environ, {"GITHUB_EVENT_NAME": "push",
+                        "GITHUB_REF": "refs/tags/v0.1.0", "GITHUB_REPOSITORY": "endless-net/fixture"}), patch.object(
+                        ci, "remote_tag", return_value=sha), patch.object(ci.subprocess, "run", side_effect=forbid_github):
+                    with self.assertRaisesRegex(ValueError, "clean"):
+                        ci.publish(root, {"component": "fixture", "artifacts": [{"release": "runtime",
+                            "kind": "source", "name": "fixture", "path": "."}]}, output, "v0.1.0", sha)
+
+    def test_direct_source_archive_uses_committed_bytes_in_a_dirty_tree(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "repo"
+            self.committed_checkout(root)
+            committed = (root / "main.go").read_bytes()
+            (root / "main.go").write_bytes(b"dirty tracked input")
+            (root / "untracked.go").write_bytes(b"untracked input")
+            entries = ci.archive_bytes(root, {"path": "."})
+            self.assertEqual(entries["main.go"][0], committed)
+            self.assertNotIn("untracked.go", entries)
+
+    def test_owned_dart_and_flutter_packages_cannot_be_omitted(self):
+        for kind in ("dart", "flutter"):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                (root / "api").mkdir()
+                (root / "api/pubspec.yaml").write_text("name: fixture\n")
+                data = {"component": "fixture", "modules": [{"path": "api", "kind": kind}],
+                        "artifacts": [{"release": "runtime", "kind": "source", "name": "fixture", "path": "api"}]}
+                profile = root / "profile.json"
+                profile.write_text(json.dumps(data))
+                ci.load_profile(root, "profile.json")
+                (root / "undeclared").mkdir()
+                (root / "undeclared/pubspec.yaml").write_text("name: undeclared\n")
+                with self.assertRaisesRegex(ValueError, "every owned Dart/Flutter package"):
+                    ci.load_profile(root, "profile.json")
+                (root / "undeclared/pubspec.yaml").unlink()
+                for cache in (".git", ".artifacts", ".dart_tool", "build", "vendor", ".venv"):
+                    directory = root / cache / "cache-package"
+                    directory.mkdir(parents=True)
+                    (directory / "pubspec.yaml").write_text("name: cache\n")
+                ci.load_profile(root, "profile.json")
+
     def test_tags_are_normal_v0_only(self):
         for value in ("v0.1.0", "api/v0.2.3"):
             self.assertIsNotNone(ci.TAG.fullmatch(value))
@@ -66,14 +191,13 @@ class PublicCI(unittest.TestCase):
 
     def test_api_and_runtime_are_distinct_subsets(self):
         with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
+            root = Path(temp) / "repo"
+            self.committed_checkout(root)
             profile = {"component": "fixture", "artifacts": [
                 {"release": "runtime", "kind": "source", "name": "runtime", "path": "."},
                 {"release": "api", "kind": "source", "name": "api", "path": "."}]}
-            with patch.object(ci, "command", return_value="a" * 40), patch.object(
-                    ci, "archive_bytes", return_value={"source": (b"source", 0o644)}):
-                ci.build(root, profile, root / "api-out", "api/v0.1.0")
-            archives = [p.name for p in (root / "api-out").glob("*.tar.gz")]
+            ci.build(root, profile, root / ".artifacts", "api/v0.1.0")
+            archives = [p.name for p in (root / ".artifacts").glob("*.tar.gz")]
             self.assertEqual(len(archives), 1)
             self.assertTrue(archives[0].startswith("api-"))
 
@@ -121,6 +245,8 @@ class PublicCI(unittest.TestCase):
                 "GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/tags/v0.1.0",
                 "GITHUB_REPOSITORY": "endless-net/fixture"}, clear=True), patch.object(
                     ci, "remote_tag", return_value="a" * 40), patch.object(
+                    ci, "clean_commit", return_value="a" * 40), patch.object(
+                    ci, "validate_output_location", return_value=output), patch.object(
                     ci, "command", side_effect=fake_command), patch.object(
                     ci.subprocess, "run", return_value=SimpleNamespace(
                         returncode=1 if missing else 0, stdout=json.dumps(existing),
