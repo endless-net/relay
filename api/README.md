@@ -101,3 +101,12 @@ pair/session/credential/trust/instance сроков; retries/reconnect не пр
 v1 и RelayControl не меняются. Поле сохраняется SDK roundtrip; это не является
 доказательством runtime проверки. Runtime пока закреплён на опубликованном
 v0.1.0; зависимый переход запрещён до выпуска нового SDK.
+
+## JSON SDK api/v0.3.0
+
+Пакет `github.com/endless-net/relay/api/wire` экспортирует `Endpoint`,
+`EndpointSnapshot` и `Credential` для producer-owned public JSON v1. Поля совпадают
+с опубликованной схемой и retained wire; `expires_at` — `time.Time`, не protobuf
+Unix nano field. Golden fixture roundtrip и nanosecond/uint64 precision проверяются
+unit tests. DTO сами не подтверждают подпись, trust, expiry, pair authorization
+или production readiness. Private keys и runtime в эту API-поставку не входят.
