@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	relayapi "github.com/endless-net/relay/api/relay/v1"
 	"github.com/endless-net/relay/internal/budget"
 	"go.opentelemetry.io/otel"
 	otelcodes "go.opentelemetry.io/otel/codes"
@@ -25,7 +26,7 @@ type DeliverFunc func(networkID, fromNodeID, destinationNetworkID, toNodeID stri
 
 type Manager struct {
 	events [8]atomic.Uint64
-	relayv1.UnimplementedRelayMeshServer
+	relayapi.UnimplementedRelayMeshServer
 
 	IdentityPolicy tlsconfig.IdentityPolicy
 	RelayID        string
@@ -42,7 +43,7 @@ type Manager struct {
 }
 
 type meshItem struct {
-	message *relayv1.MeshMessage
+	message *relayapi.MeshMessage
 	route   relay.PeerRoute
 	bytes   int64
 }
@@ -54,7 +55,7 @@ type peerConnection struct {
 	incoming        atomic.Bool
 	bytes           atomic.Int64
 	ctx             context.Context
-	instance        *relayv1.RelayInstance
+	instance        *relayapi.RelayInstance
 	send            chan meshItem
 	cancel          context.CancelFunc
 	ready           atomic.Bool
@@ -75,17 +76,17 @@ func (m *Manager) Close() {
 	m.peers = map[string]*peerConnection{}
 }
 
-func (m *Manager) UpdatePeers(peers []*relayv1.RelayInstance) {
+func (m *Manager) UpdatePeers(peers []*relayapi.RelayInstance) {
 	if len(peers) > 64 {
 		m.cancel()
 		return
 	}
-	desired := make(map[string]*relayv1.RelayInstance, len(peers))
+	desired := make(map[string]*relayapi.RelayInstance, len(peers))
 	for _, instance := range peers {
 		if instance == nil || instance.GetRelayId() == "" || instance.GetRelayId() == m.RelayID || instance.GetMeshAddr() == "" {
 			continue
 		}
-		copy := &relayv1.RelayInstance{
+		copy := &relayapi.RelayInstance{
 			RelayId:  instance.GetRelayId(),
 			BootId:   instance.GetBootId(),
 			MeshAddr: instance.GetMeshAddr(),
@@ -150,7 +151,7 @@ func (m *Manager) Forward(_ context.Context, route relay.PeerRoute, networkID, f
 	if until.IsZero() || !time.Now().Before(until) {
 		return errExpiredGrant
 	}
-	message := &relayv1.MeshMessage{ProtocolVersion: relayv1.MeshProtocolVersion, Body: &relayv1.MeshMessage_Frame{Frame: &relayv1.MeshFrame{RelayId: m.RelayID, BootId: m.BootID, NetworkId: networkID, DestinationNetworkId: destinationNetworkID, FromNodeId: fromNodeID, ToNodeId: toNodeID, DestinationEpoch: route.Epoch, AuthorizationExpiresUnixNano: until.UnixNano(), Payload: append([]byte(nil), payload...)}}}
+	message := &relayapi.MeshMessage{ProtocolVersion: relayv1.MeshProtocolVersion, Body: &relayapi.MeshMessage_Frame{Frame: &relayapi.MeshFrame{RelayId: m.RelayID, BootId: m.BootID, NetworkId: networkID, DestinationNetworkId: destinationNetworkID, FromNodeId: fromNodeID, ToNodeId: toNodeID, DestinationEpoch: route.Epoch, AuthorizationExpiresUnixNano: until.UnixNano(), Payload: append([]byte(nil), payload...)}}}
 	if err := validateMeshMessage(message); err != nil {
 		return err
 	}
@@ -163,7 +164,7 @@ func (m *Manager) Forward(_ context.Context, route relay.PeerRoute, networkID, f
 	}
 }
 
-func (m *Manager) Connect(stream relayv1.RelayMesh_ConnectServer) (result error) {
+func (m *Manager) Connect(stream relayapi.RelayMesh_ConnectServer) (result error) {
 	defer func() {
 		if result != nil && m.ctx.Err() == nil {
 			m.events[6].Add(1)
@@ -215,7 +216,7 @@ func (m *Manager) Connect(stream relayv1.RelayMesh_ConnectServer) (result error)
 			return relay.ErrDestinationFenced
 		}
 		switch body := message.GetBody().(type) {
-		case *relayv1.MeshMessage_Frame:
+		case *relayapi.MeshMessage_Frame:
 			frame := body.Frame
 			if frame.GetRelayId() != hello.GetRelayId() || frame.GetBootId() != hello.GetBootId() || m.Deliver == nil {
 				return errors.New("invalid relay mesh frame source")
@@ -236,9 +237,9 @@ func (m *Manager) Connect(stream relayv1.RelayMesh_ConnectServer) (result error)
 			}
 			guard := func() bool { return incoming.ctx.Err() == nil && stream.Context().Err() == nil }
 			_ = m.Deliver(frame.GetNetworkId(), frame.GetFromNodeId(), frame.GetDestinationNetworkId(), frame.GetToNodeId(), frame.GetDestinationEpoch(), until, guard, frame.GetPayload())
-		case *relayv1.MeshMessage_Ping:
+		case *relayapi.MeshMessage_Ping:
 			if err := sendBounded(stream.Context(), func() {}, func() error {
-				return stream.Send(&relayv1.MeshMessage{ProtocolVersion: relayv1.MeshProtocolVersion, Body: &relayv1.MeshMessage_Pong{Pong: &relayv1.MeshPong{}}})
+				return stream.Send(&relayapi.MeshMessage{ProtocolVersion: relayv1.MeshProtocolVersion, Body: &relayapi.MeshMessage_Pong{Pong: &relayapi.MeshPong{}}})
 			}); err != nil {
 				return err
 			}
@@ -338,7 +339,7 @@ func (m *Manager) connectPeer(ctx context.Context, connection *peerConnection) e
 	}
 	handshakeTimer := time.AfterFunc(handshakeBudget, func() { _ = grpcConnection.Close() })
 	defer handshakeTimer.Stop()
-	stream, err := relayv1.NewRelayMeshClient(grpcConnection).Connect(ctx)
+	stream, err := relayapi.NewRelayMeshClient(grpcConnection).Connect(ctx)
 	if err != nil {
 		return err
 	}
@@ -433,7 +434,7 @@ func (m *Manager) connectPeer(ctx context.Context, connection *peerConnection) e
 				return errors.New("mesh_peer_expired")
 			}
 			if err := writer.send(time.Time{}, func() error {
-				return stream.Send(&relayv1.MeshMessage{ProtocolVersion: relayv1.MeshProtocolVersion, Body: &relayv1.MeshMessage_Ping{Ping: &relayv1.MeshPing{}}})
+				return stream.Send(&relayapi.MeshMessage{ProtocolVersion: relayv1.MeshProtocolVersion, Body: &relayapi.MeshMessage_Ping{Ping: &relayapi.MeshPing{}}})
 			}); err != nil {
 				return err
 			}
@@ -466,11 +467,11 @@ func (m *Manager) queueSize() int {
 	return 256
 }
 
-func meshHello(relayID, bootID string) *relayv1.MeshMessage {
-	return &relayv1.MeshMessage{ProtocolVersion: relayv1.MeshProtocolVersion, Body: &relayv1.MeshMessage_Hello{Hello: &relayv1.MeshHello{RelayId: relayID, BootId: bootID}}}
+func meshHello(relayID, bootID string) *relayapi.MeshMessage {
+	return &relayapi.MeshMessage{ProtocolVersion: relayv1.MeshProtocolVersion, Body: &relayapi.MeshMessage_Hello{Hello: &relayapi.MeshHello{RelayId: relayID, BootId: bootID}}}
 }
 
-func validateMeshMessage(message *relayv1.MeshMessage) error {
+func validateMeshMessage(message *relayapi.MeshMessage) error {
 	if message == nil {
 		return errors.New("relay mesh message is required")
 	}
@@ -495,9 +496,9 @@ func canonicalRequired(value string) bool {
 	return value != "" && value == strings.TrimSpace(value)
 }
 
-func receiveCurrentPeer(ctx context.Context, stream relayv1.RelayMesh_ConnectServer) (*relayv1.MeshMessage, error) {
+func receiveCurrentPeer(ctx context.Context, stream relayapi.RelayMesh_ConnectServer) (*relayapi.MeshMessage, error) {
 	type received struct {
-		message *relayv1.MeshMessage
+		message *relayapi.MeshMessage
 		err     error
 	}
 	result := make(chan received, 1)

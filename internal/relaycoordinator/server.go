@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	relayapi "github.com/endless-net/relay/api/relay/v1"
 	"github.com/endless-net/relay/internal/authz"
 	relayv1 "github.com/endless-net/relay/internal/grpcwire"
 	"github.com/endless-net/relay/internal/store"
@@ -22,7 +23,7 @@ const (
 )
 
 type Server struct {
-	relayv1.UnimplementedRelayControlServer
+	relayapi.UnimplementedRelayControlServer
 
 	IdentityPolicy tlsconfig.IdentityPolicy
 	Store          store.Store
@@ -31,7 +32,7 @@ type Server struct {
 	SessionTTL     time.Duration
 }
 
-func (s *Server) RegisterInstance(ctx context.Context, request *relayv1.RegisterInstanceRequest) (*relayv1.RegisterInstanceResponse, error) {
+func (s *Server) RegisterInstance(ctx context.Context, request *relayapi.RegisterInstanceRequest) (*relayapi.RegisterInstanceResponse, error) {
 	if err := s.authorizeRelayIdentity(ctx, request.GetRelayId()); err != nil {
 		return nil, err
 	}
@@ -46,10 +47,10 @@ func (s *Server) RegisterInstance(ctx context.Context, request *relayv1.Register
 	if err != nil {
 		return nil, err
 	}
-	return &relayv1.RegisterInstanceResponse{Peers: protoInstances(peers), LeaseExpiresUnixNano: expires.UnixNano(), RelayTrustBundle: bundle}, nil
+	return &relayapi.RegisterInstanceResponse{Peers: protoInstances(peers), LeaseExpiresUnixNano: expires.UnixNano(), RelayTrustBundle: bundle}, nil
 }
 
-func (s *Server) HeartbeatInstance(ctx context.Context, request *relayv1.HeartbeatInstanceRequest) (*relayv1.HeartbeatInstanceResponse, error) {
+func (s *Server) HeartbeatInstance(ctx context.Context, request *relayapi.HeartbeatInstanceRequest) (*relayapi.HeartbeatInstanceResponse, error) {
 	if err := s.authorizeRelayIdentity(ctx, request.GetRelayId()); err != nil {
 		return nil, err
 	}
@@ -64,10 +65,10 @@ func (s *Server) HeartbeatInstance(ctx context.Context, request *relayv1.Heartbe
 	if err != nil {
 		return nil, err
 	}
-	return &relayv1.HeartbeatInstanceResponse{Peers: protoInstances(peers), LeaseExpiresUnixNano: expires.UnixNano(), RelayTrustBundle: bundle}, nil
+	return &relayapi.HeartbeatInstanceResponse{Peers: protoInstances(peers), LeaseExpiresUnixNano: expires.UnixNano(), RelayTrustBundle: bundle}, nil
 }
 
-func (s *Server) relayTrustBundle(ctx context.Context) (*relayv1.SigningTrustBundle, error) {
+func (s *Server) relayTrustBundle(ctx context.Context) (*relayapi.SigningTrustBundle, error) {
 	bundle, err := s.Authorizer.RelayTrustBundle(ctx)
 	if err != nil {
 		return nil, status.Error(codes.Unavailable, "relay trust bundle unavailable")
@@ -78,7 +79,7 @@ func (s *Server) relayTrustBundle(ctx context.Context) (*relayv1.SigningTrustBun
 	return relayv1.TrustBundleFromProtocol(bundle), nil
 }
 
-func (s *Server) AcquireSession(ctx context.Context, request *relayv1.AcquireSessionRequest) (*relayv1.AcquireSessionResponse, error) {
+func (s *Server) AcquireSession(ctx context.Context, request *relayapi.AcquireSessionRequest) (*relayapi.AcquireSessionResponse, error) {
 	if err := s.authorizeRelayIdentity(ctx, request.GetRelayId()); err != nil {
 		return nil, err
 	}
@@ -96,10 +97,10 @@ func (s *Server) AcquireSession(ctx context.Context, request *relayv1.AcquireSes
 	if err != nil {
 		return nil, mapStoreError(err)
 	}
-	return &relayv1.AcquireSessionResponse{Epoch: lease.Epoch}, nil
+	return &relayapi.AcquireSessionResponse{Epoch: lease.Epoch}, nil
 }
 
-func (s *Server) RenewSession(ctx context.Context, request *relayv1.RenewSessionRequest) (*relayv1.RenewSessionResponse, error) {
+func (s *Server) RenewSession(ctx context.Context, request *relayapi.RenewSessionRequest) (*relayapi.RenewSessionResponse, error) {
 	if err := s.authorizeRelayIdentity(ctx, request.GetRelayId()); err != nil {
 		return nil, err
 	}
@@ -118,10 +119,10 @@ func (s *Server) RenewSession(ctx context.Context, request *relayv1.RenewSession
 	if err != nil {
 		return nil, mapStoreError(err)
 	}
-	return &relayv1.RenewSessionResponse{}, nil
+	return &relayapi.RenewSessionResponse{}, nil
 }
 
-func (s *Server) ReleaseSession(ctx context.Context, request *relayv1.ReleaseSessionRequest) (*relayv1.ReleaseSessionResponse, error) {
+func (s *Server) ReleaseSession(ctx context.Context, request *relayapi.ReleaseSessionRequest) (*relayapi.ReleaseSessionResponse, error) {
 	if err := s.authorizeRelayIdentity(ctx, request.GetRelayId()); err != nil {
 		return nil, err
 	}
@@ -133,10 +134,10 @@ func (s *Server) ReleaseSession(ctx context.Context, request *relayv1.ReleaseSes
 	if err != nil {
 		return nil, mapStoreError(err)
 	}
-	return &relayv1.ReleaseSessionResponse{}, nil
+	return &relayapi.ReleaseSessionResponse{}, nil
 }
 
-func (s *Server) AuthorizePeer(ctx context.Context, request *relayv1.AuthorizePeerRequest) (*relayv1.AuthorizePeerResponse, error) {
+func (s *Server) AuthorizePeer(ctx context.Context, request *relayapi.AuthorizePeerRequest) (*relayapi.AuthorizePeerResponse, error) {
 	if err := s.authorizeRelayIdentity(ctx, request.GetRelayId()); err != nil {
 		return nil, err
 	}
@@ -158,7 +159,7 @@ func (s *Server) AuthorizePeer(ctx context.Context, request *relayv1.AuthorizePe
 	if err != nil {
 		return nil, status.Error(codes.NotFound, "relay peer is not connected")
 	}
-	return &relayv1.AuthorizePeerResponse{DestinationRelayId: destination.RelayID, DestinationBootId: destination.BootID, DestinationEpoch: destination.Epoch}, nil
+	return &relayapi.AuthorizePeerResponse{DestinationRelayId: destination.RelayID, DestinationBootId: destination.BootID, DestinationEpoch: destination.Epoch}, nil
 }
 
 func (s *Server) authorizeRelayIdentity(ctx context.Context, requestedRelayID string) error {
@@ -178,9 +179,6 @@ func (s *Server) authorizeRelayIdentity(ctx context.Context, requestedRelayID st
 	return nil
 }
 
-func relayIDFromPeer(ctx context.Context) (string, error) {
-	return relayIDFromPeerWithPolicy(ctx, tlsconfig.IdentityPolicy{})
-}
 func relayIDFromPeerWithPolicy(ctx context.Context, policy tlsconfig.IdentityPolicy) (string, error) {
 	peerInfo, ok := peer.FromContext(ctx)
 	if !ok || peerInfo.AuthInfo == nil {
@@ -207,10 +205,10 @@ func relayIDFromPeerWithPolicy(ctx context.Context, policy tlsconfig.IdentityPol
 	return relayID, nil
 }
 
-func protoInstances(instances []store.Instance) []*relayv1.RelayInstance {
-	result := make([]*relayv1.RelayInstance, 0, len(instances))
+func protoInstances(instances []store.Instance) []*relayapi.RelayInstance {
+	result := make([]*relayapi.RelayInstance, 0, len(instances))
 	for _, instance := range instances {
-		result = append(result, &relayv1.RelayInstance{RelayId: instance.RelayID, BootId: instance.BootID, MeshAddr: instance.MeshAddr})
+		result = append(result, &relayapi.RelayInstance{RelayId: instance.RelayID, BootId: instance.BootID, MeshAddr: instance.MeshAddr})
 	}
 	return result
 }

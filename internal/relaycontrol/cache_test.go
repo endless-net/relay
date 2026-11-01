@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	relayapi "github.com/endless-net/relay/api/relay/v1"
 	pb "github.com/endless-net/relay/internal/grpcwire"
 	wire "github.com/endless-net/relay/internal/wire"
 	"google.golang.org/grpc"
@@ -14,18 +15,19 @@ import (
 )
 
 type pairControl struct {
-	pb.RelayControlClient
+	relayapi.RelayControlClient
+
 	key   string
 	calls int
 	deny  bool
 }
 
-func (s *pairControl) AuthorizePeer(_ context.Context, r *pb.AuthorizePeerRequest, _ ...grpc.CallOption) (*pb.AuthorizePeerResponse, error) {
+func (s *pairControl) AuthorizePeer(_ context.Context, r *relayapi.AuthorizePeerRequest, _ ...grpc.CallOption) (*relayapi.AuthorizePeerResponse, error) {
 	s.calls++
 	if s.deny || r.Credential.KeyId != s.key {
 		return nil, status.Error(codes.PermissionDenied, "denied")
 	}
-	return &pb.AuthorizePeerResponse{DestinationRelayId: "b", DestinationBootId: "bb", DestinationEpoch: 1}, nil
+	return &relayapi.AuthorizePeerResponse{DestinationRelayId: "b", DestinationBootId: "bb", DestinationEpoch: 1}, nil
 }
 
 func TestCacheBindsWholeCredentialAndInvalidatesDeny(t *testing.T) {
@@ -34,7 +36,7 @@ func TestCacheBindsWholeCredentialAndInvalidatesDeny(t *testing.T) {
 		t.Fatal(e)
 	}
 	backend := &pairControl{key: bundle.ActiveKeyID}
-	c := &Client{Control: backend, Peers: peerUpdaterFunc(func([]*pb.RelayInstance) {})}
+	c := &Client{Control: backend, Peers: peerUpdaterFunc(func([]*relayapi.RelayInstance) {})}
 	now := time.Now()
 	if e = c.acceptCoordinatorState(nil, now.Add(30*time.Second).UnixNano(), pb.TrustBundleFromProtocol(bundle), now); e != nil {
 		t.Fatal(e)

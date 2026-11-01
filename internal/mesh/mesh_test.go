@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	relayapi "github.com/endless-net/relay/api/relay/v1"
 	relayv1 "github.com/endless-net/relay/internal/grpcwire"
 	"github.com/endless-net/relay/internal/relay"
 	"google.golang.org/grpc"
@@ -55,12 +56,12 @@ func TestManagersForwardOneHopAcrossRelays(t *testing.T) {
 		t.Fatal(err)
 	}
 	serverB := grpc.NewServer(grpc.Creds(credentials.NewTLS(serverConfig(certB))))
-	relayv1.RegisterRelayMeshServer(serverB, managerB)
+	relayapi.RegisterRelayMeshServer(serverB, managerB)
 	go serverB.Serve(listenerB)
 	defer serverB.Stop()
 
-	managerB.UpdatePeers([]*relayv1.RelayInstance{{RelayId: "relay-a", BootId: "boot-a", MeshAddr: "127.0.0.1:1"}})
-	managerA.UpdatePeers([]*relayv1.RelayInstance{{RelayId: "relay-b", BootId: "boot-b", MeshAddr: listenerB.Addr().String()}})
+	managerB.UpdatePeers([]*relayapi.RelayInstance{{RelayId: "relay-a", BootId: "boot-a", MeshAddr: "127.0.0.1:1"}})
+	managerA.UpdatePeers([]*relayapi.RelayInstance{{RelayId: "relay-b", BootId: "boot-b", MeshAddr: listenerB.Addr().String()}})
 	deadline := time.NewTimer(10 * time.Second)
 	defer deadline.Stop()
 	ticker := time.NewTicker(10 * time.Millisecond)
@@ -89,7 +90,7 @@ func TestManagersForwardOneHopAcrossRelays(t *testing.T) {
 func TestForwardRejectsStalePeerBoot(t *testing.T) {
 	manager := NewManager(context.Background(), "relay-a", "boot-a", &tls.Config{MinVersion: tls.VersionTLS13}, nil)
 	defer manager.Close()
-	manager.UpdatePeers([]*relayv1.RelayInstance{{RelayId: "relay-b", BootId: "new-boot", MeshAddr: "127.0.0.1:1"}})
+	manager.UpdatePeers([]*relayapi.RelayInstance{{RelayId: "relay-b", BootId: "new-boot", MeshAddr: "127.0.0.1:1"}})
 	err := manager.Forward(context.Background(), relay.PeerRoute{ValidUntil: time.Now().Add(10 * time.Second), RelayID: "relay-b", BootID: "old-boot", Epoch: 1}, "network", "a", "destination-network", "b", []byte("frame"))
 	if err != relay.ErrDestinationFenced {
 		t.Fatalf("stale boot forwarding error = %v", err)
@@ -99,7 +100,7 @@ func TestForwardRejectsStalePeerBoot(t *testing.T) {
 func TestForwardRejectsUnavailablePeer(t *testing.T) {
 	manager := NewManager(context.Background(), "relay-a", "boot-a", &tls.Config{MinVersion: tls.VersionTLS13}, nil)
 	defer manager.Close()
-	manager.UpdatePeers([]*relayv1.RelayInstance{{RelayId: "relay-b", BootId: "boot-b", MeshAddr: "127.0.0.1:1"}})
+	manager.UpdatePeers([]*relayapi.RelayInstance{{RelayId: "relay-b", BootId: "boot-b", MeshAddr: "127.0.0.1:1"}})
 	err := manager.Forward(context.Background(), relay.PeerRoute{ValidUntil: time.Now().Add(10 * time.Second), RelayID: "relay-b", BootID: "boot-b", Epoch: 1}, "network", "a", "destination-network", "b", []byte("frame"))
 	if err == nil || err.Error() != "relay mesh peer is unavailable" {
 		t.Fatalf("unavailable peer forwarding error = %v", err)
@@ -108,16 +109,16 @@ func TestForwardRejectsUnavailablePeer(t *testing.T) {
 
 func TestValidateMeshMessageRejectsVersionBodyAndUnknownFields(t *testing.T) {
 	unknown := []byte{0x98, 0x06, 0x01}
-	for _, message := range []*relayv1.MeshMessage{
-		{Body: &relayv1.MeshMessage_Ping{Ping: &relayv1.MeshPing{}}},
+	for _, message := range []*relayapi.MeshMessage{
+		{Body: &relayapi.MeshMessage_Ping{Ping: &relayapi.MeshPing{}}},
 		{ProtocolVersion: relayv1.MeshProtocolVersion},
-		{ProtocolVersion: relayv1.MeshProtocolVersion, Body: &relayv1.MeshMessage_Hello{Hello: &relayv1.MeshHello{RelayId: " relay", BootId: "boot"}}},
+		{ProtocolVersion: relayv1.MeshProtocolVersion, Body: &relayapi.MeshMessage_Hello{Hello: &relayapi.MeshHello{RelayId: " relay", BootId: "boot"}}},
 	} {
 		if err := validateMeshMessage(message); err == nil {
 			t.Fatalf("invalid mesh message was accepted: %#v", message)
 		}
 	}
-	message := &relayv1.MeshMessage{ProtocolVersion: relayv1.MeshProtocolVersion, Body: &relayv1.MeshMessage_Ping{Ping: &relayv1.MeshPing{}}}
+	message := &relayapi.MeshMessage{ProtocolVersion: relayv1.MeshProtocolVersion, Body: &relayapi.MeshMessage_Ping{Ping: &relayapi.MeshPing{}}}
 	message.ProtoReflect().SetUnknown(unknown)
 	if err := validateMeshMessage(message); err == nil {
 		t.Fatal("mesh message with unknown protobuf fields was accepted")
@@ -163,8 +164,8 @@ func testRelayCertificate(t *testing.T, ca *x509.Certificate, caKey *ecdsa.Priva
 }
 
 func TestMeshFrameRequiresExplicitDestinationNetwork(t *testing.T) {
-	frame := &relayv1.MeshFrame{RelayId: "a", BootId: "boot", NetworkId: "source", FromNodeId: "same-node", ToNodeId: "same-node", DestinationEpoch: 1, AuthorizationExpiresUnixNano: time.Now().Add(10 * time.Second).UnixNano(), Payload: []byte("opaque")}
-	message := &relayv1.MeshMessage{ProtocolVersion: relayv1.MeshProtocolVersion, Body: &relayv1.MeshMessage_Frame{Frame: frame}}
+	frame := &relayapi.MeshFrame{RelayId: "a", BootId: "boot", NetworkId: "source", FromNodeId: "same-node", ToNodeId: "same-node", DestinationEpoch: 1, AuthorizationExpiresUnixNano: time.Now().Add(10 * time.Second).UnixNano(), Payload: []byte("opaque")}
+	message := &relayapi.MeshMessage{ProtocolVersion: relayv1.MeshProtocolVersion, Body: &relayapi.MeshMessage_Frame{Frame: frame}}
 	for _, network := range []string{"", " target", "target "} {
 		frame.DestinationNetworkId = network
 		if err := validateMeshMessage(message); err == nil {

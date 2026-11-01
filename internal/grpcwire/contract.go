@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	relayapi "github.com/endless-net/relay/api/relay/v1"
 	protocolv1 "github.com/endless-net/relay/internal/wire"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -48,8 +49,8 @@ func (s *rejectUnknownServerStream) RecvMsg(target any) error {
 	return nil
 }
 
-func CredentialFromProtocol(credential protocolv1.Credential) *Credential {
-	return &Credential{
+func CredentialFromProtocol(credential protocolv1.Credential) *relayapi.Credential {
+	return &relayapi.Credential{
 		Algorithm:         credential.Algorithm,
 		KeyId:             credential.KeyID,
 		NetworkId:         credential.NetworkID,
@@ -59,7 +60,7 @@ func CredentialFromProtocol(credential protocolv1.Credential) *Credential {
 	}
 }
 
-func CredentialToProtocol(credential *Credential) (protocolv1.Credential, error) {
+func CredentialToProtocol(credential *relayapi.Credential) (protocolv1.Credential, error) {
 	if credential == nil || !canonicalRequired(credential.GetAlgorithm()) || !canonicalRequired(credential.GetKeyId()) || !canonicalRequired(credential.GetNetworkId()) || !canonicalRequired(credential.GetNodeId()) || !canonicalRequired(credential.GetSignature()) || credential.GetExpiresAtUnixNano() <= 0 {
 		return protocolv1.Credential{}, errors.New("invalid relay credential")
 	}
@@ -73,10 +74,10 @@ func CredentialToProtocol(credential *Credential) (protocolv1.Credential, error)
 	}, nil
 }
 
-func TrustBundleFromProtocol(bundle protocolv1.SigningTrustBundle) *SigningTrustBundle {
-	converted := &SigningTrustBundle{Version: int32(bundle.Version), ActiveKeyId: bundle.ActiveKeyID, Keys: make([]*SigningTrustKey, 0, len(bundle.Keys))}
+func TrustBundleFromProtocol(bundle protocolv1.SigningTrustBundle) *relayapi.SigningTrustBundle {
+	converted := &relayapi.SigningTrustBundle{Version: int32(bundle.Version), ActiveKeyId: bundle.ActiveKeyID, Keys: make([]*relayapi.SigningTrustKey, 0, len(bundle.Keys))}
 	for _, key := range bundle.Keys {
-		convertedKey := &SigningTrustKey{KeyId: key.KeyID, Algorithm: key.Algorithm, PublicKey: key.PublicKey}
+		convertedKey := &relayapi.SigningTrustKey{KeyId: key.KeyID, Algorithm: key.Algorithm, PublicKey: key.PublicKey}
 		if key.NotBefore != nil {
 			convertedKey.NotBeforeUnixNano = key.NotBefore.UTC().UnixNano()
 		}
@@ -88,7 +89,7 @@ func TrustBundleFromProtocol(bundle protocolv1.SigningTrustBundle) *SigningTrust
 	return converted
 }
 
-func TrustBundleToProtocol(bundle *SigningTrustBundle) (protocolv1.SigningTrustBundle, error) {
+func TrustBundleToProtocol(bundle *relayapi.SigningTrustBundle) (protocolv1.SigningTrustBundle, error) {
 	if bundle == nil {
 		return protocolv1.SigningTrustBundle{}, errors.New("relay trust bundle is required")
 	}

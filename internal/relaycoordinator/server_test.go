@@ -12,7 +12,9 @@ import (
 	"testing"
 	"time"
 
+	relayapi "github.com/endless-net/relay/api/relay/v1"
 	"github.com/endless-net/relay/internal/testkit"
+	"github.com/endless-net/relay/internal/tlsconfig"
 
 	relayv1 "github.com/endless-net/relay/internal/grpcwire"
 	"github.com/endless-net/relay/internal/store"
@@ -66,13 +68,13 @@ func TestInstanceResponsesRequireValidTrustBundle(t *testing.T) {
 					t.Fatal(err)
 				}
 				server := &Server{Store: storage, Authorizer: tc.authorizer}
-				var received *relayv1.SigningTrustBundle
+				var received *relayapi.SigningTrustBundle
 				var callErr error
 				if method == "register" {
-					response, err := server.RegisterInstance(ctx, &relayv1.RegisterInstanceRequest{RelayId: "relay-a", BootId: "boot-a", MeshAddr: "relay-a:9444"})
+					response, err := server.RegisterInstance(ctx, &relayapi.RegisterInstanceRequest{RelayId: "relay-a", BootId: "boot-a", MeshAddr: "relay-a:9444"})
 					received, callErr = response.GetRelayTrustBundle(), err
 				} else {
-					response, err := server.HeartbeatInstance(ctx, &relayv1.HeartbeatInstanceRequest{RelayId: "relay-a", BootId: "boot-a"})
+					response, err := server.HeartbeatInstance(ctx, &relayapi.HeartbeatInstanceRequest{RelayId: "relay-a", BootId: "boot-a"})
 					received, callErr = response.GetRelayTrustBundle(), err
 				}
 				if status.Code(callErr) != tc.code {
@@ -113,9 +115,9 @@ func TestSessionMethodsRejectInvalidIdentityBeforeStoreAccess(t *testing.T) {
 				ctx := relayContext(t, "relay-a")
 				var err error
 				if method == "renew" {
-					_, err = server.RenewSession(ctx, &relayv1.RenewSessionRequest{RelayId: "relay-a", BootId: tc.boot, NetworkId: tc.network, NodeId: tc.node, Epoch: tc.epoch})
+					_, err = server.RenewSession(ctx, &relayapi.RenewSessionRequest{RelayId: "relay-a", BootId: tc.boot, NetworkId: tc.network, NodeId: tc.node, Epoch: tc.epoch})
 				} else {
-					_, err = server.ReleaseSession(ctx, &relayv1.ReleaseSessionRequest{RelayId: "relay-a", BootId: tc.boot, NetworkId: tc.network, NodeId: tc.node, Epoch: tc.epoch})
+					_, err = server.ReleaseSession(ctx, &relayapi.ReleaseSessionRequest{RelayId: "relay-a", BootId: tc.boot, NetworkId: tc.network, NodeId: tc.node, Epoch: tc.epoch})
 				}
 				if status.Code(err) != codes.InvalidArgument || status.Convert(err).Message() != "session identity and epoch are required" {
 					t.Fatalf("unexpected validation error: %v", err)
@@ -137,7 +139,7 @@ func TestSessionReconnectFencesOldRelay(t *testing.T) {
 	server := &Server{Store: store.NewMemory(), Authorizer: allowAuthorizer{bundle: bundle}}
 	for _, relayID := range []string{"relay-a", "relay-b"} {
 		ctx := relayContext(t, relayID)
-		if _, err := server.RegisterInstance(ctx, &relayv1.RegisterInstanceRequest{RelayId: relayID, BootId: "boot-" + relayID, MeshAddr: relayID + ":9444"}); err != nil {
+		if _, err := server.RegisterInstance(ctx, &relayapi.RegisterInstanceRequest{RelayId: relayID, BootId: "boot-" + relayID, MeshAddr: relayID + ":9444"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -146,24 +148,24 @@ func TestSessionReconnectFencesOldRelay(t *testing.T) {
 		t.Fatal(err)
 	}
 	protoCredential := relayv1.CredentialFromProtocol(*credential)
-	first, err := server.AcquireSession(relayContext(t, "relay-a"), &relayv1.AcquireSessionRequest{RelayId: "relay-a", BootId: "boot-relay-a", Credential: protoCredential})
+	first, err := server.AcquireSession(relayContext(t, "relay-a"), &relayapi.AcquireSessionRequest{RelayId: "relay-a", BootId: "boot-relay-a", Credential: protoCredential})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := server.AcquireSession(relayContext(t, "relay-b"), &relayv1.AcquireSessionRequest{RelayId: "relay-b", BootId: "boot-relay-b", Credential: protoCredential}); status.Code(err) != codes.FailedPrecondition {
+	if _, err := server.AcquireSession(relayContext(t, "relay-b"), &relayapi.AcquireSessionRequest{RelayId: "relay-b", BootId: "boot-relay-b", Credential: protoCredential}); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("live takeover: %v", err)
 	}
-	if _, err := server.ReleaseSession(relayContext(t, "relay-a"), &relayv1.ReleaseSessionRequest{RelayId: "relay-a", BootId: "boot-relay-a", NetworkId: "network", NodeId: "node", Epoch: first.Epoch}); err != nil {
+	if _, err := server.ReleaseSession(relayContext(t, "relay-a"), &relayapi.ReleaseSessionRequest{RelayId: "relay-a", BootId: "boot-relay-a", NetworkId: "network", NodeId: "node", Epoch: first.Epoch}); err != nil {
 		t.Fatal(err)
 	}
-	second, err := server.AcquireSession(relayContext(t, "relay-b"), &relayv1.AcquireSessionRequest{RelayId: "relay-b", BootId: "boot-relay-b", Credential: protoCredential})
+	second, err := server.AcquireSession(relayContext(t, "relay-b"), &relayapi.AcquireSessionRequest{RelayId: "relay-b", BootId: "boot-relay-b", Credential: protoCredential})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if second.Epoch <= first.Epoch {
 		t.Fatalf("new epoch = %d, old epoch = %d", second.Epoch, first.Epoch)
 	}
-	if _, err := server.RenewSession(relayContext(t, "relay-a"), &relayv1.RenewSessionRequest{RelayId: "relay-a", BootId: "boot-relay-a", NetworkId: "network", NodeId: "node", Epoch: first.Epoch, Credential: protoCredential}); err == nil {
+	if _, err := server.RenewSession(relayContext(t, "relay-a"), &relayapi.RenewSessionRequest{RelayId: "relay-a", BootId: "boot-relay-a", NetworkId: "network", NodeId: "node", Epoch: first.Epoch, Credential: protoCredential}); err == nil {
 		t.Fatal("old relay renewed a fenced session")
 	}
 }
@@ -180,7 +182,7 @@ func relayContext(t *testing.T, relayID string) context.Context {
 }
 
 func TestControlRejectsRelayIdentityOutsideSharedPolicy(t *testing.T) {
-	if _, err := relayIDFromPeer(relayContext(t, "nested/relay")); err == nil {
+	if _, err := relayIDFromPeerWithPolicy(relayContext(t, "nested/relay"), tlsconfig.IdentityPolicy{TrustDomain: "endlessnet.ru"}); err == nil {
 		t.Fatal("control accepted identity rejected by mesh policy")
 	}
 }

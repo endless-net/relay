@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/endless-net/relay/internal/grpcwire"
+	relayapi "github.com/endless-net/relay/api/relay/v1"
 	"github.com/endless-net/relay/internal/relaycontrol"
 	"github.com/endless-net/relay/internal/tlsconfig"
 	wire "github.com/endless-net/relay/internal/wire"
@@ -45,7 +45,7 @@ func TestRuntimeUnavailableExporterPreservesReadinessAndMesh(t *testing.T) {
 	// A sampled parent makes exporter failure deterministic despite 1% root
 	// sampling. Empty boot/endpoint is rejected without changing live ownership.
 	ctx := metadata.NewOutgoingContext(t.Context(), metadata.Pairs("traceparent", "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"))
-	if _, err = pb.NewRelayControlClient(connection).RegisterInstance(ctx, &pb.RegisterInstanceRequest{RelayId: "a"}); err == nil {
+	if _, err = relayapi.NewRelayControlClient(connection).RegisterInstance(ctx, &relayapi.RegisterInstanceRequest{RelayId: "a"}); err == nil {
 		t.Fatal("invalid probe unexpectedly changed registry")
 	}
 	client := &http.Client{Timeout: time.Second}

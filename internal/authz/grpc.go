@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	coordinatorrelay "github.com/endless-net/coordinator/api/relay/v1"
 	upstream "github.com/endless-net/coordinator/api/relay/v1/upstreamv1connect"
 
 	relayv1 "github.com/endless-net/relay/internal/grpcwire"
@@ -26,7 +27,7 @@ func (a GRPCAuthorizer) AuthorizeCredential(ctx context.Context, credential prot
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	response, err := a.Client.AuthorizeCredential(ctx, connect.NewRequest(&relayv1.AuthorizeCredentialRequest{Credential: relayv1.CredentialFromProtocol(credential)}))
+	response, err := a.Client.AuthorizeCredential(ctx, connect.NewRequest(&coordinatorrelay.AuthorizeCredentialRequest{Credential: relayv1.CredentialFromProtocol(credential)}))
 	if err != nil {
 		return authorizationError(err)
 	}
@@ -45,7 +46,7 @@ func (a GRPCAuthorizer) AuthorizePeer(ctx context.Context, credential protocolv1
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	response, err := a.Client.AuthorizePeerPair(ctx, connect.NewRequest(&relayv1.AuthorizePeerPairRequest{Credential: relayv1.CredentialFromProtocol(credential), PeerId: peerID, PeerNetworkId: peerNetworkID}))
+	response, err := a.Client.AuthorizePeerPair(ctx, connect.NewRequest(&coordinatorrelay.AuthorizePeerPairRequest{Credential: relayv1.CredentialFromProtocol(credential), PeerId: peerID, PeerNetworkId: peerNetworkID}))
 	if err != nil {
 		return authorizationError(err)
 	}
@@ -61,7 +62,7 @@ func (a GRPCAuthorizer) RelayTrustBundle(ctx context.Context) (protocolv1.Signin
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	response, err := a.Client.GetTrustBundle(ctx, connect.NewRequest(&relayv1.GetTrustBundleRequest{}))
+	response, err := a.Client.GetTrustBundle(ctx, connect.NewRequest(&coordinatorrelay.GetTrustBundleRequest{}))
 	if err != nil {
 		return protocolv1.SigningTrustBundle{}, err
 	}

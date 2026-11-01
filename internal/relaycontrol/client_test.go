@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	relayapi "github.com/endless-net/relay/api/relay/v1"
 	relayv1 "github.com/endless-net/relay/internal/grpcwire"
 	"github.com/endless-net/relay/internal/relay"
 	protocolv1 "github.com/endless-net/relay/internal/wire"
@@ -17,12 +18,12 @@ import (
 
 func TestEveryUnaryResponseRejectsUnknownProtobufFields(t *testing.T) {
 	responses := []proto.Message{
-		&relayv1.RegisterInstanceResponse{},
-		&relayv1.HeartbeatInstanceResponse{},
-		&relayv1.AcquireSessionResponse{},
-		&relayv1.RenewSessionResponse{},
-		&relayv1.ReleaseSessionResponse{},
-		&relayv1.AuthorizePeerResponse{},
+		&relayapi.RegisterInstanceResponse{},
+		&relayapi.HeartbeatInstanceResponse{},
+		&relayapi.AcquireSessionResponse{},
+		&relayapi.RenewSessionResponse{},
+		&relayapi.ReleaseSessionResponse{},
+		&relayapi.AuthorizePeerResponse{},
 	}
 	unknown := protowire.AppendTag(nil, 99, protowire.VarintType)
 	unknown = protowire.AppendVarint(unknown, 1)
@@ -36,14 +37,14 @@ func TestEveryUnaryResponseRejectsUnknownProtobufFields(t *testing.T) {
 
 func TestAcceptCoordinatorStateValidatesEntireResponseContract(t *testing.T) {
 	bundle := protocolv1.SigningTrustBundle{Version: protocolv1.SigningTrustBundleVersion, ActiveKeyID: "missing"}
-	client := &Client{Peers: peerUpdaterFunc(func([]*relayv1.RelayInstance) {})}
+	client := &Client{Peers: peerUpdaterFunc(func([]*relayapi.RelayInstance) {})}
 	if err := client.acceptCoordinatorState(nil, time.Now().Add(time.Minute).UnixNano(), relayv1.TrustBundleFromProtocol(bundle)); err == nil {
 		t.Fatal("invalid trust bundle was accepted")
 	}
-	if err := client.acceptCoordinatorState([]*relayv1.RelayInstance{{RelayId: " relay", BootId: "boot", MeshAddr: "relay:9444"}}, time.Now().Add(time.Minute).UnixNano(), &relayv1.SigningTrustBundle{}); err == nil {
+	if err := client.acceptCoordinatorState([]*relayapi.RelayInstance{{RelayId: " relay", BootId: "boot", MeshAddr: "relay:9444"}}, time.Now().Add(time.Minute).UnixNano(), &relayapi.SigningTrustBundle{}); err == nil {
 		t.Fatal("non-canonical peer identity was accepted")
 	}
-	if err := client.acceptCoordinatorState(nil, time.Now().Add(-time.Minute).UnixNano(), &relayv1.SigningTrustBundle{}); err == nil {
+	if err := client.acceptCoordinatorState(nil, time.Now().Add(-time.Minute).UnixNano(), &relayapi.SigningTrustBundle{}); err == nil {
 		t.Fatal("expired instance lease was accepted")
 	}
 }
@@ -64,6 +65,6 @@ func TestPeerAuthorizationClassifiesControlOutages(t *testing.T) {
 	}
 }
 
-type peerUpdaterFunc func([]*relayv1.RelayInstance)
+type peerUpdaterFunc func([]*relayapi.RelayInstance)
 
-func (f peerUpdaterFunc) UpdatePeers(peers []*relayv1.RelayInstance) { f(peers) }
+func (f peerUpdaterFunc) UpdatePeers(peers []*relayapi.RelayInstance) { f(peers) }

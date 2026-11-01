@@ -6,21 +6,23 @@ import (
 	"testing"
 	"time"
 
+	relayapi "github.com/endless-net/relay/api/relay/v1"
 	relayv1 "github.com/endless-net/relay/internal/grpcwire"
 	protocolv1 "github.com/endless-net/relay/internal/wire"
 	"google.golang.org/grpc"
 )
 
 type auditHungControl struct {
-	relayv1.RelayControlClient
-	bundle  *relayv1.SigningTrustBundle
+	relayapi.RelayControlClient
+
+	bundle  *relayapi.SigningTrustBundle
 	entered chan struct{}
 }
 
-func (a *auditHungControl) RegisterInstance(context.Context, *relayv1.RegisterInstanceRequest, ...grpc.CallOption) (*relayv1.RegisterInstanceResponse, error) {
-	return &relayv1.RegisterInstanceResponse{LeaseExpiresUnixNano: time.Now().Add(40 * time.Millisecond).UnixNano(), RelayTrustBundle: a.bundle}, nil
+func (a *auditHungControl) RegisterInstance(context.Context, *relayapi.RegisterInstanceRequest, ...grpc.CallOption) (*relayapi.RegisterInstanceResponse, error) {
+	return &relayapi.RegisterInstanceResponse{LeaseExpiresUnixNano: time.Now().Add(40 * time.Millisecond).UnixNano(), RelayTrustBundle: a.bundle}, nil
 }
-func (a *auditHungControl) HeartbeatInstance(ctx context.Context, _ *relayv1.HeartbeatInstanceRequest, _ ...grpc.CallOption) (*relayv1.HeartbeatInstanceResponse, error) {
+func (a *auditHungControl) HeartbeatInstance(ctx context.Context, _ *relayapi.HeartbeatInstanceRequest, _ ...grpc.CallOption) (*relayapi.HeartbeatInstanceResponse, error) {
 	close(a.entered)
 	<-ctx.Done()
 	return nil, ctx.Err()
@@ -31,7 +33,7 @@ func TestRegressionHungHeartbeatMustFence(t *testing.T) {
 		t.Fatal(err)
 	}
 	stub := &auditHungControl{bundle: relayv1.TrustBundleFromProtocol(bundle), entered: make(chan struct{})}
-	c := &Client{RelayID: "r", BootID: "b", MeshAddr: "r:9444", Control: stub, Peers: peerUpdaterFunc(func([]*relayv1.RelayInstance) {}), InstanceTTL: 40 * time.Millisecond, HeartbeatInterval: time.Millisecond, FencingGrace: time.Millisecond}
+	c := &Client{RelayID: "r", BootID: "b", MeshAddr: "r:9444", Control: stub, Peers: peerUpdaterFunc(func([]*relayapi.RelayInstance) {}), InstanceTTL: 40 * time.Millisecond, HeartbeatInterval: time.Millisecond, FencingGrace: time.Millisecond}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)

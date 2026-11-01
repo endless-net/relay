@@ -15,6 +15,7 @@ import (
 
 	"connectrpc.com/connect"
 	upstream "github.com/endless-net/coordinator/api/relay/v1/upstreamv1connect"
+	relayapi "github.com/endless-net/relay/api/relay/v1"
 	"github.com/endless-net/relay/internal/authz"
 	"github.com/endless-net/relay/internal/budget"
 	pb "github.com/endless-net/relay/internal/grpcwire"
@@ -107,7 +108,7 @@ func (r *Runtime) Start(ctx context.Context) (result error) {
 			return errors.New("trust_unavailable")
 		}
 		r.grpc = grpc.NewServer(grpc.Creds(tlsconfig.GRPCCredentials(serverTLS)), grpc.ConnectionTimeout(5*time.Second), grpc.MaxRecvMsgSize(147456), grpc.MaxConcurrentStreams(128), grpc.ChainUnaryInterceptor(r.unary, pb.RejectUnknownUnaryServerInterceptor))
-		pb.RegisterRelayControlServer(r.grpc, &relaycoordinator.Server{Store: r.db, Authorizer: a, InstanceTTL: 30 * time.Second, SessionTTL: 15 * time.Second})
+		relayapi.RegisterRelayControlServer(r.grpc, &relaycoordinator.Server{Store: r.db, Authorizer: a, InstanceTTL: 30 * time.Second, SessionTTL: 15 * time.Second})
 		listener, e := r.listen(ctx, r.c.ControlListen, 64)
 		if e != nil {
 			return e
@@ -152,14 +153,14 @@ func (r *Runtime) Start(ctx context.Context) (result error) {
 		if e != nil {
 			return errors.New("public_tls")
 		}
-		r.control = &relaycontrol.Client{RelayID: r.c.ID, BootID: boot, MeshAddr: r.c.MeshAddress, Control: pb.NewRelayControlClient(r.client)}
+		r.control = &relaycontrol.Client{RelayID: r.c.ID, BootID: boot, MeshAddr: r.c.MeshAddress, Control: relayapi.NewRelayControlClient(r.client)}
 		r.data = &relay.Server{Addr: r.c.Listen, TLSConfig: publicTLS, RelayID: r.c.ID, TrustBundleProvider: r.control.TrustBundle, Control: r.control, Metrics: r.stats, AuthTimeout: 5 * time.Second, QueueBudget: &budget.Bytes{Limit: 64 << 20}}
 		r.mesh = mesh.NewManager(r.ctx, r.c.ID, boot, peerTLS, r.data.DeliverRemote)
 		r.mesh.QueueBudget = r.data.QueueBudget
 		r.data.Mesh = r.mesh
 		r.control.Peers = r.mesh
 		r.grpc = grpc.NewServer(grpc.Creds(tlsconfig.GRPCCredentials(serverTLS)), grpc.ConnectionTimeout(5*time.Second), grpc.MaxRecvMsgSize(147456), grpc.MaxConcurrentStreams(1), grpc.StreamInterceptor(pb.RejectUnknownStreamServerInterceptor))
-		pb.RegisterRelayMeshServer(r.grpc, r.mesh)
+		relayapi.RegisterRelayMeshServer(r.grpc, r.mesh)
 		listener, e := r.listen(ctx, r.c.MeshListen, 64)
 		if e != nil {
 			return e

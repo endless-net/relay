@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	relayapi "github.com/endless-net/relay/api/relay/v1"
 	"github.com/endless-net/relay/internal/authz"
 	relayv1 "github.com/endless-net/relay/internal/grpcwire"
 	"github.com/endless-net/relay/internal/store"
@@ -41,7 +42,7 @@ func TestAuthorizePeerResolvesExplicitDestinationNetwork(t *testing.T) {
 	}
 	server := &Server{Store: storage, Authorizer: scopedAuthorizer{}}
 	credential := protocolv1.Credential{Algorithm: protocolv1.CredentialAlgorithm, KeyID: "fixture", NetworkID: source.NetworkID, NodeID: source.NodeID, ExpiresAt: time.Now().Add(time.Minute), Signature: "fixture"}
-	request := &relayv1.AuthorizePeerRequest{RelayId: "relay-a", BootId: "boot", SourceEpoch: source.Epoch, Credential: relayv1.CredentialFromProtocol(credential), PeerNetworkId: "destination-network", PeerId: "same-node"}
+	request := &relayapi.AuthorizePeerRequest{RelayId: "relay-a", BootId: "boot", SourceEpoch: source.Epoch, Credential: relayv1.CredentialFromProtocol(credential), PeerNetworkId: "destination-network", PeerId: "same-node"}
 	result, err := server.AuthorizePeer(ctx, request)
 	if err != nil || result.GetDestinationRelayId() != "relay-b" || result.GetDestinationEpoch() <= 0 {
 		t.Fatalf("wrong scoped destination: %v, %v", result, err)

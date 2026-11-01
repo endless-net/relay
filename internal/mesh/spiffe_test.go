@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	relayv1 "github.com/endless-net/relay/internal/grpcwire"
+	relayapi "github.com/endless-net/relay/api/relay/v1"
 	"github.com/spiffe/go-spiffe/v2/bundle/x509bundle"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	spiffetls "github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
@@ -44,8 +44,8 @@ func TestRegressionSPIFFEMeshConnect(t *testing.T) {
 	srv := grpc.NewServer(grpc.Creds(credentials.NewTLS(serverTLS)))
 	m := NewManager(context.Background(), "b", "boot-b", clientTLS, nil)
 	defer m.Close()
-	relayv1.RegisterRelayMeshServer(srv, m)
-	m.UpdatePeers([]*relayv1.RelayInstance{{RelayId: "a", BootId: "boot-a", MeshAddr: "127.0.0.1:1"}})
+	relayapi.RegisterRelayMeshServer(srv, m)
+	m.UpdatePeers([]*relayapi.RelayInstance{{RelayId: "a", BootId: "boot-a", MeshAddr: "127.0.0.1:1"}})
 	go srv.Serve(listener)
 	defer srv.Stop()
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: time.Second}, "tcp", listener.Addr().String(), clientTLS)
@@ -56,7 +56,7 @@ func TestRegressionSPIFFEMeshConnect(t *testing.T) {
 	conn.Close()
 	sender := NewManager(context.Background(), "a", "boot-a", clientTLS, nil)
 	defer sender.Close()
-	peerConn := &peerConnection{instance: &relayv1.RelayInstance{RelayId: "b", BootId: "boot-b", MeshAddr: listener.Addr().String()}, send: make(chan meshItem, 1)}
+	peerConn := &peerConnection{instance: &relayapi.RelayInstance{RelayId: "b", BootId: "boot-b", MeshAddr: listener.Addr().String()}, send: make(chan meshItem, 1)}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	done := make(chan error, 1)

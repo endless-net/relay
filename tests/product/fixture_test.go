@@ -36,7 +36,9 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	coordinatorrelay "github.com/endless-net/coordinator/api/relay/v1"
 	upstream "github.com/endless-net/coordinator/api/relay/v1/upstreamv1connect"
+	relayapi "github.com/endless-net/relay/api/relay/v1"
 	pb "github.com/endless-net/relay/internal/grpcwire"
 	"github.com/endless-net/relay/internal/testkit"
 	wire "github.com/endless-net/relay/internal/wire"
@@ -171,7 +173,7 @@ type authority struct {
 	unavailable atomic.Bool
 }
 
-func (a *authority) credential(raw *pb.Credential) error {
+func (a *authority) credential(raw *relayapi.Credential) error {
 	if a.unavailable.Load() {
 		return connect.NewError(connect.CodeUnavailable, errors.New("fixture_authority_unavailable"))
 	}
@@ -181,13 +183,13 @@ func (a *authority) credential(raw *pb.Credential) error {
 	}
 	return nil
 }
-func (a *authority) AuthorizeCredential(_ context.Context, r *connect.Request[pb.AuthorizeCredentialRequest]) (*connect.Response[pb.AuthorizeCredentialResponse], error) {
+func (a *authority) AuthorizeCredential(_ context.Context, r *connect.Request[coordinatorrelay.AuthorizeCredentialRequest]) (*connect.Response[coordinatorrelay.AuthorizeCredentialResponse], error) {
 	if e := a.credential(r.Msg.Credential); e != nil {
 		return nil, e
 	}
-	return connect.NewResponse(&pb.AuthorizeCredentialResponse{}), nil
+	return connect.NewResponse(&coordinatorrelay.AuthorizeCredentialResponse{}), nil
 }
-func (a *authority) AuthorizePeerPair(_ context.Context, r *connect.Request[pb.AuthorizePeerPairRequest]) (*connect.Response[pb.AuthorizePeerPairResponse], error) {
+func (a *authority) AuthorizePeerPair(_ context.Context, r *connect.Request[coordinatorrelay.AuthorizePeerPairRequest]) (*connect.Response[coordinatorrelay.AuthorizePeerPairResponse], error) {
 	if e := a.credential(r.Msg.Credential); e != nil {
 		return nil, e
 	}
@@ -195,13 +197,13 @@ func (a *authority) AuthorizePeerPair(_ context.Context, r *connect.Request[pb.A
 	if _, e := fmt.Sscanf(r.Msg.Credential.NodeId, "node-%d", &index); e != nil || index%2 != 0 || r.Msg.PeerId != fmt.Sprintf("node-%d", index+1) || r.Msg.PeerNetworkId != "fixture" {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("fixture_pair_deny"))
 	}
-	return connect.NewResponse(&pb.AuthorizePeerPairResponse{}), nil
+	return connect.NewResponse(&coordinatorrelay.AuthorizePeerPairResponse{}), nil
 }
-func (a *authority) GetTrustBundle(context.Context, *connect.Request[pb.GetTrustBundleRequest]) (*connect.Response[pb.GetTrustBundleResponse], error) {
+func (a *authority) GetTrustBundle(context.Context, *connect.Request[coordinatorrelay.GetTrustBundleRequest]) (*connect.Response[coordinatorrelay.GetTrustBundleResponse], error) {
 	if a.unavailable.Load() {
 		return nil, connect.NewError(connect.CodeUnavailable, errors.New("fixture_authority_unavailable"))
 	}
-	return connect.NewResponse(&pb.GetTrustBundleResponse{RelayTrustBundle: pb.TrustBundleFromProtocol(a.bundle)}), nil
+	return connect.NewResponse(&coordinatorrelay.GetTrustBundleResponse{RelayTrustBundle: pb.TrustBundleFromProtocol(a.bundle)}), nil
 }
 
 type child struct {

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	relayapi "github.com/endless-net/relay/api/relay/v1"
 	relayv1 "github.com/endless-net/relay/internal/grpcwire"
 	"github.com/endless-net/relay/internal/relay"
 	"github.com/endless-net/relay/internal/tlsconfig"
@@ -26,14 +27,14 @@ import (
 )
 
 type PeerUpdater interface {
-	UpdatePeers([]*relayv1.RelayInstance)
+	UpdatePeers([]*relayapi.RelayInstance)
 }
 
 type Client struct {
 	RelayID  string
 	BootID   string
 	MeshAddr string
-	Control  relayv1.RelayControlClient
+	Control  relayapi.RelayControlClient
 	Peers    PeerUpdater
 
 	HeartbeatInterval time.Duration
@@ -122,7 +123,7 @@ func (c *Client) run(ctx context.Context) error {
 	}
 	registerStarted := time.Now()
 	registerCtx, cancelRegister := context.WithTimeout(ctx, 2*time.Second)
-	response, err := c.Control.RegisterInstance(registerCtx, &relayv1.RegisterInstanceRequest{RelayId: c.RelayID, BootId: c.BootID, MeshAddr: c.MeshAddr})
+	response, err := c.Control.RegisterInstance(registerCtx, &relayapi.RegisterInstanceRequest{RelayId: c.RelayID, BootId: c.BootID, MeshAddr: c.MeshAddr})
 	cancelRegister()
 	if err != nil {
 		return err
@@ -142,7 +143,7 @@ func (c *Client) run(ctx context.Context) error {
 		case <-ticker.C:
 			heartbeatStarted := time.Now()
 			heartbeatCtx, cancelHeartbeat := context.WithTimeout(ctx, 2*time.Second)
-			response, err := c.Control.HeartbeatInstance(heartbeatCtx, &relayv1.HeartbeatInstanceRequest{RelayId: c.RelayID, BootId: c.BootID})
+			response, err := c.Control.HeartbeatInstance(heartbeatCtx, &relayapi.HeartbeatInstanceRequest{RelayId: c.RelayID, BootId: c.BootID})
 			cancelHeartbeat()
 			if err == nil {
 				err = rejectResponse(response)
@@ -175,7 +176,7 @@ func (c *Client) TrustBundle() (protocolv1.SigningTrustBundle, error) {
 }
 
 func (c *Client) AcquireSession(ctx context.Context, credential protocolv1.Credential) (relay.SessionLease, error) {
-	response, err := c.Control.AcquireSession(ctx, &relayv1.AcquireSessionRequest{RelayId: c.RelayID, BootId: c.BootID, Credential: relayv1.CredentialFromProtocol(credential)})
+	response, err := c.Control.AcquireSession(ctx, &relayapi.AcquireSessionRequest{RelayId: c.RelayID, BootId: c.BootID, Credential: relayv1.CredentialFromProtocol(credential)})
 	if err != nil {
 		return relay.SessionLease{}, err
 	}
@@ -189,7 +190,7 @@ func (c *Client) AcquireSession(ctx context.Context, credential protocolv1.Crede
 }
 
 func (c *Client) RenewSession(ctx context.Context, lease relay.SessionLease) error {
-	response, err := c.Control.RenewSession(ctx, &relayv1.RenewSessionRequest{RelayId: c.RelayID, BootId: c.BootID, NetworkId: lease.NetworkID, NodeId: lease.NodeID, Epoch: lease.Epoch, Credential: relayv1.CredentialFromProtocol(lease.Credential)})
+	response, err := c.Control.RenewSession(ctx, &relayapi.RenewSessionRequest{RelayId: c.RelayID, BootId: c.BootID, NetworkId: lease.NetworkID, NodeId: lease.NodeID, Epoch: lease.Epoch, Credential: relayv1.CredentialFromProtocol(lease.Credential)})
 	if err != nil {
 		return mapPeerAuthorizationError(err)
 	}
@@ -197,7 +198,7 @@ func (c *Client) RenewSession(ctx context.Context, lease relay.SessionLease) err
 }
 
 func (c *Client) ReleaseSession(ctx context.Context, lease relay.SessionLease) error {
-	response, err := c.Control.ReleaseSession(ctx, &relayv1.ReleaseSessionRequest{RelayId: c.RelayID, BootId: c.BootID, NetworkId: lease.NetworkID, NodeId: lease.NodeID, Epoch: lease.Epoch})
+	response, err := c.Control.ReleaseSession(ctx, &relayapi.ReleaseSessionRequest{RelayId: c.RelayID, BootId: c.BootID, NetworkId: lease.NetworkID, NodeId: lease.NodeID, Epoch: lease.Epoch})
 	if err != nil {
 		return err
 	}
@@ -205,7 +206,7 @@ func (c *Client) ReleaseSession(ctx context.Context, lease relay.SessionLease) e
 }
 
 func (c *Client) authorizePeerRPC(ctx context.Context, credential protocolv1.Credential, sourceEpoch int64, peerNetworkID, peerID string) (relay.PeerRoute, error) {
-	response, err := c.Control.AuthorizePeer(ctx, &relayv1.AuthorizePeerRequest{RelayId: c.RelayID, BootId: c.BootID, Credential: relayv1.CredentialFromProtocol(credential), PeerId: peerID, PeerNetworkId: peerNetworkID, SourceEpoch: sourceEpoch})
+	response, err := c.Control.AuthorizePeer(ctx, &relayapi.AuthorizePeerRequest{RelayId: c.RelayID, BootId: c.BootID, Credential: relayv1.CredentialFromProtocol(credential), PeerId: peerID, PeerNetworkId: peerNetworkID, SourceEpoch: sourceEpoch})
 	if err != nil {
 		return relay.PeerRoute{}, mapPeerAuthorizationError(err)
 	}
@@ -230,7 +231,7 @@ func mapPeerAuthorizationError(err error) error {
 	}
 }
 
-func (c *Client) acceptCoordinatorState(peers []*relayv1.RelayInstance, expiresUnixNano int64, rawBundle *relayv1.SigningTrustBundle, observations ...time.Time) error {
+func (c *Client) acceptCoordinatorState(peers []*relayapi.RelayInstance, expiresUnixNano int64, rawBundle *relayapi.SigningTrustBundle, observations ...time.Time) error {
 	expires := time.Unix(0, expiresUnixNano).UTC()
 	if len(observations) > 0 {
 		serverAt := expires.Add(-c.instanceTTL())
