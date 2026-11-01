@@ -141,6 +141,14 @@ message MeshFrame {
   bytes payload = 7;
   // network_id identifies the source; this field identifies the destination.
   string destination_network_id = 8;
+  // Required in the current mesh protocol (protocol_version=1), hard cutover.
+  // Absolute source authorization deadline:
+  // minimum of pair/session/credential/trust/instance deadlines, never restarted
+  // after queuing or reconnect. Each Relay clock is within one second of the
+  // common trusted authority; receiver subtracts TWO seconds for pairwise skew.
+  // It rejects zero/expired deadlines, or a remaining lifetime over ten seconds,
+  // and bounds queue residence and final socket write by that deadline.
+  int64 authorization_expires_unix_nano = 9;
 }
 
 message MeshPing {}

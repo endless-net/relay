@@ -1200,8 +1200,16 @@ type MeshFrame struct {
 	Payload          []byte                 `protobuf:"bytes,7,opt,name=payload,proto3" json:"payload,omitempty"`
 	// network_id identifies the source; this field identifies the destination.
 	DestinationNetworkId string `protobuf:"bytes,8,opt,name=destination_network_id,json=destinationNetworkId,proto3" json:"destination_network_id,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// Required in the current mesh protocol (protocol_version=1), hard cutover.
+	// Absolute source authorization deadline:
+	// minimum of pair/session/credential/trust/instance deadlines, never restarted
+	// after queuing or reconnect. Each Relay clock is within one second of the
+	// common trusted authority; receiver subtracts TWO seconds for pairwise skew.
+	// It rejects zero/expired deadlines, or a remaining lifetime over ten seconds,
+	// and bounds queue residence and final socket write by that deadline.
+	AuthorizationExpiresUnixNano int64 `protobuf:"varint,9,opt,name=authorization_expires_unix_nano,json=authorizationExpiresUnixNano,proto3" json:"authorization_expires_unix_nano,omitempty"`
+	unknownFields                protoimpl.UnknownFields
+	sizeCache                    protoimpl.SizeCache
 }
 
 func (x *MeshFrame) Reset() {
@@ -1288,6 +1296,13 @@ func (x *MeshFrame) GetDestinationNetworkId() string {
 		return x.DestinationNetworkId
 	}
 	return ""
+}
+
+func (x *MeshFrame) GetAuthorizationExpiresUnixNano() int64 {
+	if x != nil {
+		return x.AuthorizationExpiresUnixNano
+	}
+	return 0
 }
 
 type MeshPing struct {
@@ -1455,7 +1470,7 @@ const file_relay_v1_relay_proto_rawDesc = "" +
 	"\x04body\"?\n" +
 	"\tMeshHello\x12\x19\n" +
 	"\brelay_id\x18\x01 \x01(\tR\arelayId\x12\x17\n" +
-	"\aboot_id\x18\x02 \x01(\tR\x06bootId\"\x9b\x02\n" +
+	"\aboot_id\x18\x02 \x01(\tR\x06bootId\"\xe2\x02\n" +
 	"\tMeshFrame\x12\x19\n" +
 	"\brelay_id\x18\x01 \x01(\tR\arelayId\x12\x17\n" +
 	"\aboot_id\x18\x02 \x01(\tR\x06bootId\x12\x1d\n" +
@@ -1467,7 +1482,8 @@ const file_relay_v1_relay_proto_rawDesc = "" +
 	"to_node_id\x18\x05 \x01(\tR\btoNodeId\x12+\n" +
 	"\x11destination_epoch\x18\x06 \x01(\x03R\x10destinationEpoch\x12\x18\n" +
 	"\apayload\x18\a \x01(\fR\apayload\x124\n" +
-	"\x16destination_network_id\x18\b \x01(\tR\x14destinationNetworkId\"\n" +
+	"\x16destination_network_id\x18\b \x01(\tR\x14destinationNetworkId\x12E\n" +
+	"\x1fauthorization_expires_unix_nano\x18\t \x01(\x03R\x1cauthorizationExpiresUnixNano\"\n" +
 	"\n" +
 	"\bMeshPing\"\n" +
 	"\n" +

@@ -45,7 +45,7 @@ func TestDirectedPairAndFencingRoundTrip(t *testing.T) {
 	if decoded.GetPeerNetworkId() == decoded.GetCredential().GetNetworkId() {
 		t.Fatal("source/destination collapsed")
 	}
-	frame := &relayv1.MeshMessage{ProtocolVersion: 1, Body: &relayv1.MeshMessage_Frame{Frame: &relayv1.MeshFrame{NetworkId: "source-network", DestinationNetworkId: "destination-network", DestinationEpoch: 17, Payload: []byte{0, 255, 1}}}}
+	frame := &relayv1.MeshMessage{ProtocolVersion: 1, Body: &relayv1.MeshMessage_Frame{Frame: &relayv1.MeshFrame{NetworkId: "source-network", DestinationNetworkId: "destination-network", DestinationEpoch: 17, AuthorizationExpiresUnixNano: 1770000000123456789, Payload: []byte{0, 255, 1}}}}
 	wire, err = proto.Marshal(frame)
 	if err != nil {
 		t.Fatal(err)

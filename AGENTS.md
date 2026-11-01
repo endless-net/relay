@@ -68,8 +68,8 @@ govulncheck ./...
 ```
 
 Непустой вывод `goimports -l` означает ошибку форматирования; исправления
-просматриваются отдельно. Корневой `cmd/relay/main.go` — пустой сборочный каркас,
-а не реализация dataplane/registry. Сборка Linux amd64 выполняется отдельно
+просматриваются отдельно. Команды `cmd/relay` и `cmd/relay-coordinator` реализуют dataplane и registry;
+готовность подтверждается проверками runtime009. Сборка Linux amd64 выполняется отдельно
 командой `python3 -B scripts/ci.py build`.
 
 Версии инструментов и producer-owned generation/fixtures описаны в
@@ -87,7 +87,7 @@ python3 api/checks/verify_public_wire.py
 Зависимости JSON-проверки устанавливать вне репозитория в изолированную среду.
 Контрактные shape/byte/semantic fixtures не подтверждают production signatures,
 upstream authorization или TTL/revocation budgets. По карте владельцев Relay
-отвечает за opaque payload и registry/leases/fencing; пустой main их не реализует.
+отвечает за opaque payload и registry/leases/fencing; наличие SDK не подтверждает их исполнение.
 Coordinator остаётся authority Network/Node pair,
 Signing — purpose trust. Provision/host/deploy/activation находятся во внешнем
 платформенном контуре вне активного состава; эти функции не переходят Relay или
@@ -105,9 +105,8 @@ local replace и обход pin через GOWORK запрещены.
 Профиль .ci/profile.json явно перечисляет все собственные модули и outputs.
 Базовый CI: format/lint, go vet, go test -short и govulncheck для Go, применимые
 Dart/JSON unit/static checks. Integration/E2E и тесты прежних версий в обязательный
-MVP gate не входят. Отсутствие unit cases у пустого main фиксируется без выдуманного
-покрытия. Собираемый пустой main явно запрошен пользователем для проверки поставки;
-он не реализует доменную логику, БД, handlers или сетевой runtime.
+MVP gate не входят. Runtime009 реализует обе команды: relay и relay-coordinator;
+результаты проверок не подменяют отдельную post-MVP сетевую приёмку.
 
 Автономные команды: python3 -B scripts/ci.py check и build; unit tooling — scripts/test_ci.py.
 Kit не загружается, собственные публичные lint configs остаются у владельца.

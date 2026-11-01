@@ -86,3 +86,28 @@ Public dataplane JSON shapes, framing, limits и offline vectors находят�
 [PUBLIC-WIRE.md](PUBLIC-WIRE.md), отдельно от registry/mesh Protobuf. Схема
 `urn:endlessnet:relay:public-wire:v1` остаётся producer-owned. Эти fixtures
 не подтверждают подпись, доверенную ротацию, pair authorization или production.
+
+
+## Кандидат009: mesh deadline
+
+Неопубликованный candidate `api/v0.2.0` добавляет обязательный
+`MeshFrame.authorization_expires_unix_nano` для mesh protocol_version=1.
+Это hard cutover: обе стороны отвергают кадры без нового обязательного поля, нулевой/истёкший deadline
+и срок дальше10с от локального времени после вычитания clock margin. Отправитель берёт минимум исходных
+pair/session/credential/trust/instance сроков; retries/reconnect не продлевают его.
+Каждые часы допускают1с относительно общего authority (pairwise до2с).
+Принимающий вычитает2с clock margin и ограничивает этим сроком очередь и
+фактическую запись. Дополнительно destination queue residence≤2с. Public JSON
+v1 и RelayControl не меняются. Поле сохраняется SDK roundtrip; это не является
+доказательством runtime проверки. Runtime пока закреплён на опубликованном
+v0.1.0; зависимый переход запрещён до выпуска нового SDK.
+
+## JSON SDK api/v0.3.0
+
+
+Пакет `github.com/endless-net/relay/api/wire` экспортирует `Endpoint`,
+`EndpointSnapshot` и `Credential` для producer-owned public JSON v1. Поля совпадают
+с опубликованной схемой и retained wire; `expires_at` — `time.Time`, не protobuf
+Unix nano field. Golden fixture roundtrip и nanosecond/uint64 precision проверяются
+unit tests. DTO сами не подтверждают подпись, trust, expiry, pair authorization
+или production readiness. Private keys и runtime в эту API-поставку не входят.

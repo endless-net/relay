@@ -13,6 +13,14 @@ jobs:
   checks:
     runs-on: ubuntu-26.04
     timeout-minutes: 10
+    env:
+      GOPRIVATE: github.com/endless-net/*
+      GH_TOKEN: ${{ secrets.PRODUCER_API_READ_TOKEN }}
+      GIT_CONFIG_COUNT: '2'
+      GIT_CONFIG_KEY_0: credential.helper
+      GIT_CONFIG_VALUE_0: ''
+      GIT_CONFIG_KEY_1: credential.helper
+      GIT_CONFIG_VALUE_1: '!gh auth git-credential'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,10 +40,18 @@ jobs:
         with:
           go-version: '1.27.3'
           cache: false
+      - name: Require protected read-only producer API access
+        run: |
+          test -n "$GH_TOKEN" || { echo 'PRODUCER_API_READ_TOKEN is required; external PRs receive no credentials' >&2; exit 1; }
       - name: Install pinned Go check tools
         run: bash scripts/install-ci-tools.sh
       - name: Profile and publisher unit fixtures
         run: python -B scripts/test_ci.py
+      - name: Verify reproducible SQL generation
+        run: |
+          test "$(sqlc version)" = v1.30.0
+          sqlc generate
+          git diff --exit-code -- internal/store/storedb
       - name: All declared short checks
         run: python -B scripts/ci.py check
       - name: Build declared artifacts
