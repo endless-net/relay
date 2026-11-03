@@ -1,5 +1,22 @@
 # Relay API: registry и mesh
 
+## Дополнение 007 — typed Relay wire SDK, api/v0.4.0
+
+`wire` экспортирует ClientHello/ClientFrame/ServerFrame/Ready/Error/Heartbeat,
+константы существующего v1 и `DecodeMessage`/`MarshalMessage`/`NewDecoder`.
+Кодек проверяет exact field names, required/non-null поля, nested duplicate keys,
+unknown kinds/versions, canonical base64, timestamp и пределы 65536 decoded
+payload bytes / 147456 bytes на LF-ended line. После malformed/oversized line
+stream decoder больше не используется. Его владелец задаёт I/O deadlines и TLS.
+`CredentialSigningPayload` формирует прежние canonical v3 bytes; не подписывает
+и не подтверждает authority/expiry/trust. Синтетические fixtures не credentials.
+
+Wire v1, forwarding и прежние API types сохраняются. Consumer получает новый
+SDK только после успешного main CI/API release и exact published pin, без
+local replace или копии DTO. Existing schema/vectors и новые
+unit tests проверяют кодек, не реальное peer-соединение.
+
+
 ## Новая MVP-линейка v0
 
 До отдельно объявленного стабильного major новой линейки обратная совместимость
