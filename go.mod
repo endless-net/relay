@@ -5,8 +5,8 @@ go 1.27.4
 require (
 	connectrpc.com/connect v1.19.1
 	github.com/caarlos0/env/v11 v11.4.1
-	github.com/endless-net/coordinator/api v0.1.0
-	github.com/endless-net/relay/api v0.2.0
+	github.com/endless-net/coordinator/api v0.17.0
+	github.com/endless-net/relay/api v0.4.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/pressly/goose/v3 v3.29.0
 	github.com/spiffe/go-spiffe/v2 v2.8.2

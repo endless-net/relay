@@ -13,8 +13,12 @@ github.com/dustin/go-humanize v1.1.0 h1:dbKTrvD0klcbBV/h4AWJdMuZogJACoMlvWIWZ5b2
 github.com/dustin/go-humanize v1.1.0/go.mod h1:hc1CvRkJMsgxqjmjMQF3QNRAZBwY8AXBAzKYoSX9sFI=
 github.com/endless-net/coordinator/api v0.1.0 h1:4m3gGXH2G71HBgNPDo0gbe22NW8za36VK6WwWnWjUB0=
 github.com/endless-net/coordinator/api v0.1.0/go.mod h1:+/yJffqF7PE3oHEjY/6pJd0YXbDBx6ssUtvR1Uo3464=
+github.com/endless-net/coordinator/api v0.17.0 h1:+p/br04aXSU2jZh0ZNLlLPxGrI2s/Ewrsj0Ebx9sQIY=
+github.com/endless-net/coordinator/api v0.17.0/go.mod h1:yLAfwUj4WS82s0sJcHXRxLPBR8D1fhD+n+UJx5l+SZI=
 github.com/endless-net/relay/api v0.2.0 h1:kF12ZlSys8krzwrwEwYSgP+MqDHBa5ozohgdyMugak0=
 github.com/endless-net/relay/api v0.2.0/go.mod h1:DyZOBGoNp5n93wiUAhRjbrYk0wam8U4OP0hqbDyU4Xw=
+github.com/endless-net/relay/api v0.4.0 h1:f6szHbFk3/xuWqfTVyrg0wq5x+xMxk+WFDrRZZ2yzeM=
+github.com/endless-net/relay/api v0.4.0/go.mod h1:DyZOBGoNp5n93wiUAhRjbrYk0wam8U4OP0hqbDyU4Xw=
 github.com/go-jose/go-jose/v4 v4.1.6 h1:sNRkftxFJxwsILiQukqp5z83QBSmntVwmgRY7AqBDO4=
 github.com/go-jose/go-jose/v4 v4.1.6/go.mod h1:x4oUasVrzR7071A4TnHLGSPpNOm2a21K9Kf04k1rs08=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=

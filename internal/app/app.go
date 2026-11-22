@@ -103,7 +103,7 @@ func (r *Runtime) Start(ctx context.Context) (result error) {
 		}
 		transport := &http.Transport{TLSClientConfig: upstreamTLS, DialTLSContext: tlsconfig.HTTPDialTLS(upstreamTLS), ForceAttemptHTTP2: true, MaxConnsPerHost: 128, MaxIdleConnsPerHost: 16, IdleConnTimeout: 10 * time.Second, TLSHandshakeTimeout: 2 * time.Second, ResponseHeaderTimeout: 2 * time.Second}
 		r.httpClient = &http.Client{Transport: traceTransport{transport}, Timeout: 2 * time.Second}
-		a := authz.GRPCAuthorizer{Client: upstream.NewRelayUpstreamServiceClient(r.httpClient, r.c.Upstream, connect.WithGRPC(), connect.WithReadMaxBytes(147456))}
+		a := authz.GRPCAuthorizer{Client: upstream.NewRelayUpstreamServiceClient(r.httpClient, r.c.Upstream, connect.WithReadMaxBytes(147456), connect.WithSendMaxBytes(147456))}
 		if _, e = a.RelayTrustBundle(ctx); e != nil {
 			return errors.New("trust_unavailable")
 		}
