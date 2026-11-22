@@ -25,8 +25,6 @@ const (
 	MaxFramePayloadBytes       = protocolv1.MaxFramePayloadBytes
 	DefaultOutboundQueueFrames = 32
 	DefaultAuthTimeout         = 5 * time.Second
-	MinHeartbeatInterval       = time.Duration(protocolv1.MinHeartbeatIntervalMS) * time.Millisecond
-	MaxHeartbeatInterval       = time.Duration(protocolv1.MaxHeartbeatIntervalMS) * time.Millisecond
 	maxLineBytes               = MaxFramePayloadBytes*2 + 16*1024
 	outboundWriteTimeout       = 2 * time.Second
 )

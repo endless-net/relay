@@ -298,7 +298,7 @@ func (c *Client) instanceTTL() time.Duration {
 	if c.InstanceTTL > 0 {
 		return c.InstanceTTL
 	}
-	return 30 * time.Second
+	return relayv1.InstanceLeaseTTL
 }
 
 var errClockUntrusted = errors.New("control_clock_untrusted")

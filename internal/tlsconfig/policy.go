@@ -2,6 +2,7 @@ package tlsconfig
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"strings"
 	"time"
@@ -65,10 +66,12 @@ func PeerID(state tls.ConnectionState) (spiffeid.ID, error) {
 	if len(state.PeerCertificates) == 0 {
 		return spiffeid.ID{}, errors.New("missing_peer_certificate")
 	}
-	leaf := state.PeerCertificates[0]
-	now := time.Now()
-	if !now.Add(time.Second).Before(leaf.NotAfter) || now.Add(-time.Second).Before(leaf.NotBefore) {
+	if !svidWithinValidityWindow(state.PeerCertificates[0], time.Now()) {
 		return spiffeid.ID{}, errors.New("peer_svid_expired")
 	}
 	return spiffetls.PeerIDFromConnectionState(state)
+}
+
+func svidWithinValidityWindow(leaf *x509.Certificate, now time.Time) bool {
+	return now.Add(time.Second).Before(leaf.NotAfter) && !now.Add(-time.Second).Before(leaf.NotBefore)
 }

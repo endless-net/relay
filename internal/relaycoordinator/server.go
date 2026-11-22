@@ -17,10 +17,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const (
-	DefaultInstanceTTL = 30 * time.Second
-	DefaultSessionTTL  = 15 * time.Second
-)
+const DefaultSessionTTL = 15 * time.Second
 
 type Server struct {
 	relayapi.UnimplementedRelayControlServer
@@ -235,7 +232,7 @@ func (s *Server) instanceTTL() time.Duration {
 	if s.InstanceTTL > 0 {
 		return s.InstanceTTL
 	}
-	return DefaultInstanceTTL
+	return relayv1.InstanceLeaseTTL
 }
 
 func (s *Server) sessionTTL() time.Duration {

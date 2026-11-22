@@ -18,7 +18,6 @@ import (
 const (
 	DefaultTrustDomain = "endlessnet.ru"
 	DefaultWorkloadAPI = "unix:///run/spire/sockets/agent.sock"
-	ProviderSPIFFE     = "spiffe"
 )
 
 type x509Source interface {
@@ -151,7 +150,5 @@ func (r *WorkloadRuntime) Healthy() bool {
 	if e != nil || s == nil || len(s.Certificates) == 0 {
 		return false
 	}
-	leaf := s.Certificates[0]
-	now := time.Now()
-	return now.Add(time.Second).Before(leaf.NotAfter) && !now.Add(-time.Second).Before(leaf.NotBefore)
+	return svidWithinValidityWindow(s.Certificates[0], time.Now())
 }

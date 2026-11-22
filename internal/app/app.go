@@ -108,7 +108,7 @@ func (r *Runtime) Start(ctx context.Context) (result error) {
 			return errors.New("trust_unavailable")
 		}
 		r.grpc = grpc.NewServer(grpc.Creds(tlsconfig.GRPCCredentials(serverTLS)), grpc.ConnectionTimeout(5*time.Second), grpc.MaxRecvMsgSize(147456), grpc.MaxConcurrentStreams(128), grpc.ChainUnaryInterceptor(r.unary, pb.RejectUnknownUnaryServerInterceptor))
-		relayapi.RegisterRelayControlServer(r.grpc, &relaycoordinator.Server{Store: r.db, Authorizer: a, InstanceTTL: 30 * time.Second, SessionTTL: 15 * time.Second})
+		relayapi.RegisterRelayControlServer(r.grpc, &relaycoordinator.Server{Store: r.db, Authorizer: a})
 		listener, e := r.listen(ctx, r.c.ControlListen, 64)
 		if e != nil {
 			return e

@@ -77,6 +77,13 @@ func CheckJSON(raw []byte) error {
 	return nil
 }
 
+// decodeCheckedJSON requires CheckJSON to have accepted a single JSON value.
+func decodeCheckedJSON(raw []byte, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	return decoder.Decode(target)
+}
+
 func exactFields(raw []byte, t reflect.Type) error {
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()

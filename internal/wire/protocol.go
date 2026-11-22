@@ -1,14 +1,12 @@
 package wire
 
 import (
-	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"reflect"
 	"strings"
 	"time"
@@ -23,7 +21,6 @@ const (
 	credentialSchemaVersion   = 3
 	SigningTrustBundleVersion = 1
 	SigningKeyEd25519         = "ed25519"
-	EndpointProtocolTLS       = "relay-v1-tls"
 )
 
 const (
@@ -34,19 +31,6 @@ const (
 	MessageError       = "error"
 	MessageHeartbeat   = "heartbeat"
 )
-
-type Endpoint struct {
-	ID       string `json:"id"`
-	Addr     string `json:"addr"`
-	Protocol string `json:"protocol"`
-	Region   string `json:"region,omitempty"`
-	Priority int    `json:"priority"`
-}
-
-type EndpointSnapshot struct {
-	Version   int64      `json:"version"`
-	Endpoints []Endpoint `json:"endpoints"`
-}
 
 type Credential struct {
 	Algorithm string    `json:"algorithm"`
@@ -63,16 +47,7 @@ func (c *Credential) UnmarshalJSON(raw []byte) error {
 	}
 	type credentialJSON Credential
 	var decoded credentialJSON
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&decoded); err != nil {
-		return err
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return errors.New("relay credential contains multiple JSON values")
-		}
+	if err := decodeCheckedJSON(raw, &decoded); err != nil {
 		return err
 	}
 	*c = Credential(decoded)
@@ -86,19 +61,7 @@ func DecodeStrict(raw []byte, target any) error {
 	if err := exactFields(raw, reflect.TypeOf(target)); err != nil {
 		return err
 	}
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return err
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return errors.New("json contains multiple values")
-		}
-		return err
-	}
-	return nil
+	return decodeCheckedJSON(raw, target)
 }
 
 type credentialPayload struct {
@@ -338,26 +301,6 @@ type Heartbeat struct {
 	Type            string `json:"type"`
 	ProtocolVersion int    `json:"protocol_version"`
 	Time            string `json:"time"`
-}
-
-func (s EndpointSnapshot) Validate() error {
-	if s.Version < 1 {
-		return errors.New("relay endpoint snapshot version must be positive")
-	}
-	seen := make(map[string]struct{}, len(s.Endpoints))
-	for _, endpoint := range s.Endpoints {
-		if !isCanonicalRequired(endpoint.ID) || !isCanonicalRequired(endpoint.Addr) || endpoint.Protocol != EndpointProtocolTLS {
-			return errors.New("relay endpoint id, address, and protocol are invalid")
-		}
-		if endpoint.Region != strings.TrimSpace(endpoint.Region) || endpoint.Priority < 0 {
-			return errors.New("relay endpoint region or priority is invalid")
-		}
-		if _, exists := seen[endpoint.ID]; exists {
-			return errors.New("relay endpoint id is duplicated")
-		}
-		seen[endpoint.ID] = struct{}{}
-	}
-	return nil
 }
 
 func isCanonicalRequired(value string) bool {

@@ -18,6 +18,9 @@ import (
 
 const MeshProtocolVersion int32 = 1
 
+// InstanceLeaseTTL is used to issue leases and to infer the coordinator clock from their expiry.
+const InstanceLeaseTTL = 30 * time.Second
+
 func RejectUnknownUnaryServerInterceptor(ctx context.Context, request any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 	if message, ok := request.(proto.Message); ok {
 		if err := RejectUnknownFields(message); err != nil {
