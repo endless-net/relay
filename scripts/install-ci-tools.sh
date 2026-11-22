@@ -11,7 +11,11 @@ curl --fail --silent --show-error --location --retry 3 "https://github.com/golan
 (cd "$scratch" && grep "  $archive$" checksums.txt | sha256sum --check --strict -)
 tar -xzf "$scratch/$archive" --strip-components=1 -C "$destination" "golangci-lint-${version}-linux-amd64/golangci-lint"
 printf '%s\n' "$destination" >> "${GITHUB_PATH:?}"
-go install golang.org/x/tools/cmd/goimports@v0.48.0
+if [[ "${1:-}" != --go-only ]]; then
+  go install golang.org/x/tools/cmd/goimports@v0.48.0
+fi
 go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
 
-go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
+if [[ "${1:-}" != --go-only ]]; then
+  go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
+fi

@@ -70,7 +70,7 @@ govulncheck ./...
 Непустой вывод `goimports -l` означает ошибку форматирования; исправления
 просматриваются отдельно. Команды `cmd/relay` и `cmd/relay-coordinator` реализуют dataplane и registry;
 готовность подтверждается проверками runtime009. Сборка Linux amd64 выполняется отдельно
-командой `python3 -B scripts/ci.py build`.
+командой `go run ./scripts/ci build`.
 
 Версии инструментов и producer-owned generation/fixtures описаны в
 [контрактном README](api/README.md). При изменении схемы использовать закреплённые
@@ -81,10 +81,10 @@ v0 gate; исторические comparisons не требуют compatibility 
 Внешний JSON dataplane отдельно проверяется командой из корня репозитория:
 
 ```bash
-python3 api/checks/verify_public_wire.py
+(cd api && go test -short -v ./checks)
 ```
 
-Зависимости JSON-проверки устанавливать вне репозитория в изолированную среду.
+Валидатор JSON Schema закреплён в `api/go.mod`.
 Контрактные shape/byte/semantic fixtures не подтверждают production signatures,
 upstream authorization или TTL/revocation budgets. По карте владельцев Relay
 отвечает за opaque payload и registry/leases/fencing; наличие SDK не подтверждает их исполнение.
@@ -103,13 +103,16 @@ shims, dual API и fallback ради прошлых версий. Сохраня
 local replace и обход pin через GOWORK запрещены.
 
 Профиль .ci/profile.json явно перечисляет все собственные модули и outputs.
-Базовый CI: format/lint, go vet, go test -short и govulncheck для Go, применимые
-Dart/JSON unit/static checks. Integration/E2E и тесты прежних версий в обязательный
+На push в `main` Go CI запускает `go test -short`, `govulncheck` и
+`golangci-lint` для Go-кода приложения и инструментов. Workflow `api-ci.yml`
+сверяет сборку API с исходным контрактом. Проверки Dart/JSON выполняются отдельно. Integration/E2E и тесты прежних версий в обязательный
 MVP gate не входят. Runtime009 реализует обе команды: relay и relay-coordinator;
 результаты проверок не подменяют отдельную post-MVP сетевую приёмку.
 
-Автономные команды: python3 -B scripts/ci.py check и build; unit tooling — scripts/test_ci.py.
+Автономные команды — `go run ./scripts/ci check`, `go run ./scripts/ci build`
+и `go test -short ./scripts/ci`. Код CI хранится локально в `scripts/ci/`.
 Kit не загружается, собственные публичные lint configs остаются у владельца.
-Release допускается только по push обычного v0-тега после exact commit checks и
-сборки. API-тег выбирает только source/SDK, runtime-тег — runtime outputs.
+Тег runtime использует успешный Go CI, тег API — успешную сверку сборки API.
+В обоих случаях workflow сверяет результат на том же SHA, собирает артефакты
+и публикует выпуск. API-тег выбирает только source/SDK, runtime-тег — runtime outputs.
 Spec Kit и общая конституция находятся только в workspace.

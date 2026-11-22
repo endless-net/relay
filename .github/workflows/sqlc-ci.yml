@@ -1,0 +1,35 @@
+name: sqlc build verification
+on:
+  push:
+    branches: ['main']
+    paths:
+      - 'sqlc.yaml'
+      - 'internal/store/migrations/**'
+      - 'internal/store/queries.sql'
+      - 'internal/store/storedb/**'
+      - '.github/workflows/sqlc-ci.yml'
+permissions:
+  contents: read
+jobs:
+  storage-generated:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.4'
+          cache: false
+      - name: Set up pinned sqlc
+        run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
+      - name: Compare clean SQL generation with the committed output
+        run: |
+          set -euo pipefail
+          test "$(sqlc version)" = v1.30.0
+          scratch=$(mktemp -d)
+          trap 'rm -rf -- "$scratch"' EXIT
+          git archive HEAD -- sqlc.yaml internal/store/migrations internal/store/queries.sql | tar -xf - -C "$scratch"
+          (cd -- "$scratch" && sqlc generate)
+          diff -ru internal/store/storedb "$scratch/internal/store/storedb"
