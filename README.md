@@ -40,8 +40,21 @@ static workload certificates и plaintext fallback запрещены. Public TL
 certificate — отдельная граница. SPIRE и доверенное время настраиваются внешне.
 
 `/healthz`, `/readyz`, `/metrics` — на настроенном loopback. Registry/trust/SVID
-failure снимает готовность; обязательная фатальная ошибка останавливает процесс.
+failure снимает готовность. При отказе registry Relay Coordinator остаётся
+жив, отклоняет операции control и восстанавливает готовность после проверок
+SQL, времени и доверия. Временный транспортный сбой допускает один повтор
+read-only проверки в исходном бюджете 2 с. Фатальный отказ workload, trust
+upstream или listener останавливает процесс.
 Optional exporter не влияет на право и не блокирует critical path.
+
+## Прямой PostgreSQL mTLS по DNS
+
+Установите `ENDLESSNET_RELAY_DATABASE_VERIFY_DNS=true` для Relay Coordinator.
+`ENDLESSNET_RELAY_DATABASE_URL` указывает одну PostgreSQL БД по DNS-имени,
+с SQL-пользователем и без пароля.
+`ENDLESSNET_RELAY_DATABASE_IDENTITY` остаётся точным SPIFFE ID PostgreSQL.
+PostgreSQL предъявляет SVID с DNS SAN и сопоставляет полный DN клиентского
+SVID с SQL-ролью. Этот же профиль использует `--migrate`.
 
 ## Средний профиль
 

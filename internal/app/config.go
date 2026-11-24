@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/endless-net/relay/internal/store"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 
 	"github.com/caarlos0/env/v11"
@@ -16,6 +17,7 @@ import (
 
 type Config struct {
 	DatabaseIdentity        string `env:"ENDLESSNET_RELAY_DATABASE_IDENTITY"`
+	DatabaseVerifyDNS       bool   `env:"ENDLESSNET_RELAY_DATABASE_VERIFY_DNS"`
 	Role                    string
 	Listen                  string `env:"ENDLESSNET_RELAY_LISTEN" envDefault:":9443"`
 	MeshListen              string `env:"ENDLESSNET_RELAY_MESH_LISTEN" envDefault:":9444"`
@@ -69,6 +71,11 @@ func (c Config) Validate() error {
 		id, e := spiffeid.FromString(c.DatabaseIdentity)
 		if e != nil || id.TrustDomain().Name() != "endlessnet.ru" || !strings.HasPrefix(id.Path(), "/service/") {
 			return errors.New("config_database_identity")
+		}
+		if c.DatabaseVerifyDNS {
+			if _, err := store.DirectPostgresHost(c.DSN); err != nil {
+				return err
+			}
 		}
 	}
 	if c.Migrate {

@@ -71,7 +71,9 @@ func (t *telemetry) log(name, id string) {
 		return
 	}
 	switch name {
-	case "started", "stopped", "fatal", "rpc", "registry_unavailable", "trust_unavailable", "workload_expired", "listener_failed", "control_failed", "dataplane_failed":
+	case "started", "stopped", "fatal", "rpc", "registry_unavailable", "trust_unavailable",
+		"registry_clock_untrusted", "registry_trust_untrusted", "registry_transport_unavailable",
+		"registry_recovered", "workload_expired", "listener_failed", "control_failed", "dataplane_failed":
 	default:
 		name = "runtime"
 	}

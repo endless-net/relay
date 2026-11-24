@@ -3,6 +3,7 @@ package tlsconfig
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"strings"
@@ -122,6 +123,75 @@ func (r *WorkloadRuntime) ClientTLSConfig(expectedPeer string) (*tls.Config, err
 	config := spiffetlsconfig.MTLSClientConfig(r.source, r.source, spiffetlsconfig.AuthorizeID(peerID))
 	config.MinVersion = tls.VersionTLS13
 	return config, nil
+}
+
+type DatabaseTransport struct {
+	TLSConfig   *tls.Config
+	VerifyLease func(tls.Certificate, tls.ConnectionState) (time.Time, error)
+}
+
+// DatabaseTLSConfig binds the SPIFFE-authenticated PostgreSQL server to its DNS name.
+func (r *WorkloadRuntime) DatabaseTLSConfig(expectedPeer, serverName string) (DatabaseTransport, error) {
+	config, err := r.ClientTLSConfig(expectedPeer)
+	if err != nil {
+		return DatabaseTransport{}, err
+	}
+	config.ServerName = serverName
+	config.MaxVersion = tls.VersionTLS13
+	config.SessionTicketsDisabled = true
+	verifyPeer := func(certs []*x509.Certificate) ([][]*x509.Certificate, error) {
+		identity, _, err := x509svid.Verify(certs, r.source)
+		if err != nil || identity.String() != expectedPeer {
+			return nil, errors.New("database_peer_untrusted")
+		}
+		bundle, err := r.source.GetX509BundleForTrustDomain(r.trustDomain)
+		if err != nil || bundle == nil {
+			return nil, errors.New("database_peer_untrusted")
+		}
+		roots, intermediates := x509.NewCertPool(), x509.NewCertPool()
+		for _, certificate := range bundle.X509Authorities() {
+			roots.AddCert(certificate)
+		}
+		for _, certificate := range certs[1:] {
+			intermediates.AddCert(certificate)
+		}
+		chains, err := certs[0].Verify(x509.VerifyOptions{
+			DNSName: serverName, Roots: roots, Intermediates: intermediates,
+		})
+		if err != nil {
+			return nil, errors.New("database_dns_untrusted")
+		}
+		return chains, nil
+	}
+	transport := DatabaseTransport{TLSConfig: config}
+	transport.VerifyLease = func(local tls.Certificate, state tls.ConnectionState) (time.Time, error) {
+		certs := make([]*x509.Certificate, 0, len(local.Certificate))
+		for _, der := range local.Certificate {
+			certificate, err := x509.ParseCertificate(der)
+			if err != nil {
+				return time.Time{}, err
+			}
+			certs = append(certs, certificate)
+		}
+		_, localChains, err := x509svid.Verify(certs, r.source)
+		if err != nil {
+			return time.Time{}, err
+		}
+		peerChains, err := verifyPeer(state.PeerCertificates)
+		if err != nil {
+			return time.Time{}, err
+		}
+		expiry := certs[0].NotAfter
+		for _, chain := range append(localChains, peerChains...) {
+			for _, certificate := range chain {
+				if certificate.NotAfter.Before(expiry) {
+					expiry = certificate.NotAfter
+				}
+			}
+		}
+		return expiry, nil
+	}
+	return transport, nil
 }
 
 func (r *WorkloadRuntime) ClientTLSConfigForTrustDomain() (*tls.Config, error) {

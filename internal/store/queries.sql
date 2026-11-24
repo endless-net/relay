@@ -22,8 +22,18 @@ SELECT count(*) FROM relay_instances;
 -- name: ActiveSessionCount :one
 SELECT count(*) FROM node_session_leases WHERE relay_id=sqlc.arg(relay_id) AND lease_expires_at>sqlc.arg(now_at);
 
--- name: Clock :one
-SELECT clock_timestamp()::timestamptz;
+-- name: RegistryReadiness :one
+SELECT clock_timestamp()::timestamptz AS observed_at,
+    (has_table_privilege('relay_instances', 'SELECT')
+    AND has_table_privilege('relay_instances', 'INSERT')
+    AND has_table_privilege('relay_instances', 'UPDATE')
+    AND has_table_privilege('relay_instance_boots', 'SELECT')
+    AND has_table_privilege('relay_instance_boots', 'INSERT')
+    AND has_table_privilege('node_session_leases', 'SELECT')
+    AND has_table_privilege('node_session_leases', 'INSERT')
+    AND has_table_privilege('node_session_leases', 'UPDATE')
+    AND (has_sequence_privilege('relay_epoch_seq', 'USAGE')
+        OR has_sequence_privilege('relay_epoch_seq', 'UPDATE')))::boolean AS permitted;
 
 -- name: Heartbeat :one
 UPDATE relay_instances SET lease_expires_at=sqlc.arg(expires)

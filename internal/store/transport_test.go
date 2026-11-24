@@ -4,10 +4,13 @@ import (
 	"context"
 	"crypto/tls"
 	"testing"
+
+	"github.com/endless-net/relay/internal/tlsconfig"
 )
 
 func TestRegistryRejectsPlaintextAndStaticTLS(t *testing.T) {
-	for _, transport := range []*tls.Config{nil, {MinVersion: tls.VersionTLS13}} {
+	for _, config := range []*tls.Config{nil, {MinVersion: tls.VersionTLS13}} {
+		transport := tlsconfig.DatabaseTransport{TLSConfig: config}
 		if _, e := OpenPostgres(context.Background(), "postgres://unused/fixture", transport); e == nil {
 			t.Fatal("unverified database transport accepted")
 		}

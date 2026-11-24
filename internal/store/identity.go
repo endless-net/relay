@@ -4,28 +4,73 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"net"
 	"time"
 
 	"github.com/endless-net/relay/internal/tlsconfig"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+func transportFreezer(transport tlsconfig.DatabaseTransport) func(context.Context, *pgx.ConnConfig) error {
+	return func(_ context.Context, c *pgx.ConnConfig) error {
+		return freezeIdentity(c, transport)
+	}
+}
 
 // freezeIdentity binds each database connection to the SVID used in its handshake.
 // The pool fetches fresh Workload API material on the next connection.
-func freezeIdentity(_ context.Context, c *pgx.ConnConfig) error {
+func freezeIdentity(c *pgx.ConnConfig, transport tlsconfig.DatabaseTransport) error {
 	cfg := c.TLSConfig.Clone()
 	certificate, e := cfg.GetClientCertificate(&tls.CertificateRequestInfo{})
 	if e != nil || certificate == nil || len(certificate.Certificate) == 0 {
-		return errors.New("registry_identity_unavailable")
+		return errRegistryTrust
 	}
 	leaf, e := x509.ParseCertificate(certificate.Certificate[0])
 	if e != nil || !time.Now().Add(3*time.Second).Before(leaf.NotAfter) {
-		return errors.New("registry_identity_expired")
+		return errRegistryTrust
 	}
 	cfg.Certificates = []tls.Certificate{*certificate}
-	cfg.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) { return certificate, nil }
+	var clientCertificateRequested bool
+	cfg.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+		clientCertificateRequested = true
+		return certificate, nil
+	}
+	if cfg.ServerName != "" {
+		if transport.VerifyLease == nil {
+			return errRegistryTrust
+		}
+		c.AfterNetConnect = func(ctx context.Context, _ *pgconn.Config, underlying net.Conn) (net.Conn, error) {
+			secured, ok := underlying.(*tls.Conn)
+			if !ok {
+				return underlying, errRegistryTrust
+			}
+			clientCertificateRequested = false
+			if err := secured.HandshakeContext(ctx); err != nil {
+				return underlying, err
+			}
+			if !clientCertificateRequested {
+				return underlying, errRegistryTrust
+			}
+			return underlying, verifyDatabaseLease(secured, *certificate, transport)
+		}
+	}
+	if verify := cfg.VerifyPeerCertificate; verify != nil {
+		cfg.VerifyPeerCertificate = func(raw [][]byte, chains [][]*x509.Certificate) error {
+			if err := verify(raw, chains); err != nil {
+				return errRegistryTrust
+			}
+			return nil
+		}
+	}
+	if verify := cfg.VerifyConnection; verify != nil {
+		cfg.VerifyConnection = func(state tls.ConnectionState) error {
+			if err := verify(state); err != nil {
+				return errRegistryTrust
+			}
+			return nil
+		}
+	}
 	c.TLSConfig = cfg
 	dial := c.DialFunc
 	until := leaf.NotAfter.Add(-time.Second)
@@ -42,17 +87,27 @@ func freezeIdentity(_ context.Context, c *pgx.ConnConfig) error {
 func bindDatabasePeer(_ context.Context, c *pgx.Conn) error {
 	conn, ok := c.PgConn().Conn().(*tls.Conn)
 	if !ok {
-		return errors.New("registry_tls_missing")
+		return errRegistryTrust
 	}
 	state := conn.ConnectionState()
 	if _, e := tlsconfig.PeerID(state); e != nil {
-		return errors.New("registry_peer_untrusted")
+		return errRegistryTrust
 	}
-	_, e := tlsconfig.ExpireConnection(conn.NetConn(), state.PeerCertificates[0].NotAfter.Add(-time.Second))
+	until := state.PeerCertificates[0].NotAfter.Add(-time.Second)
+	_, e := tlsconfig.ExpireConnection(conn.NetConn(), until)
 	return e
 }
 
-func reusableIdentity(c *pgx.Conn) bool {
+func verifyDatabaseLease(conn *tls.Conn, local tls.Certificate, transport tlsconfig.DatabaseTransport) error {
+	expiry, err := transport.VerifyLease(local, conn.ConnectionState())
+	if err != nil || !time.Now().Add(3*time.Second).Before(expiry) {
+		return errRegistryTrust
+	}
+	_, err = tlsconfig.ExpireConnection(conn.NetConn(), expiry.Add(-time.Second))
+	return err
+}
+
+func reusableIdentity(c *pgx.Conn, transport tlsconfig.DatabaseTransport) bool {
 	if c.IsClosed() {
 		return false
 	}
@@ -61,15 +116,18 @@ func reusableIdentity(c *pgx.Conn) bool {
 		return false
 	}
 	certificate := cfg.TLSConfig.Certificates[0]
+	conn, ok := c.PgConn().Conn().(*tls.Conn)
+	if !ok {
+		return false
+	}
+	if transport.VerifyLease != nil {
+		return verifyDatabaseLease(conn, certificate, transport) == nil
+	}
 	if len(certificate.Certificate) == 0 {
 		return false
 	}
 	own, e := x509.ParseCertificate(certificate.Certificate[0])
 	if e != nil || !time.Now().Add(3*time.Second).Before(own.NotAfter) {
-		return false
-	}
-	conn, ok := c.PgConn().Conn().(*tls.Conn)
-	if !ok {
 		return false
 	}
 	state := conn.ConnectionState()

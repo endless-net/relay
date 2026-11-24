@@ -304,6 +304,11 @@ func newFixtureWithTelemetry(t *testing.T, telemetryEndpoint string) *fixture {
 
 func newFixtureWithPublicListener(t *testing.T, telemetryEndpoint, publicListen string) *fixture {
 	t.Helper()
+	return newFixtureWithDatabaseProfile(t, telemetryEndpoint, publicListen, false)
+}
+
+func newFixtureWithDatabaseProfile(t *testing.T, telemetryEndpoint, publicListen string, directDNS bool) *fixture {
+	t.Helper()
 	pgRoot := os.Getenv("RELAY_POSTGRES_ROOT")
 	if !filepath.IsAbs(pgRoot) || !strings.HasPrefix(pgRoot, "/tmp/relay009-pg.") {
 		t.Fatal("RELAY_POSTGRES_ROOT must name the extracted isolated test package root")
@@ -384,7 +389,15 @@ func newFixtureWithPublicListener(t *testing.T, telemetryEndpoint, publicListen 
 	if output, e := init.CombinedOutput(); e != nil {
 		t.Fatalf("initdb: %v %s", e, output)
 	}
-	if e = os.WriteFile(filepath.Join(pgData, "pg_hba.conf"), []byte("local all all trust\nhostssl all relaytest 127.0.0.1/32 cert\nhost all all 127.0.0.1/32 reject\n"), 0600); e != nil {
+	auth := "cert"
+	if directDNS {
+		auth += " clientname=DN map=relay"
+		if e = os.WriteFile(filepath.Join(pgData, "pg_ident.conf"), []byte("relay CN=relaytest relaytest\n"), 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	hba := "local all all trust\nhostssl all relaytest 127.0.0.1/32 " + auth + "\nhost all all 127.0.0.1/32 reject\n"
+	if e = os.WriteFile(filepath.Join(pgData, "pg_hba.conf"), []byte(hba), 0600); e != nil {
 		t.Fatal(e)
 	}
 	pgAddress := freeAddress(t)
@@ -438,6 +451,10 @@ func newFixtureWithPublicListener(t *testing.T, telemetryEndpoint, publicListen 
 	f.coordinatorDiagnostics = rcHTTP
 	dsn := "postgres://relaytest@" + pgAddress + "/relay009?sslmode=require"
 	rcEnv := map[string]string{"GOMAXPROCS": "2", "ENDLESSNET_RELAY_WORKLOAD_API": "unix://" + filepath.Join(f.dir, "rc.sock"), "ENDLESSNET_RELAY_DATABASE_URL": dsn, "ENDLESSNET_RELAY_DATABASE_IDENTITY": "spiffe://endlessnet.ru/service/relay-store", "ENDLESSNET_RELAY_UPSTREAM_URL": backend.URL, "ENDLESSNET_RELAY_CONTROL_LISTEN": controlAddress, "ENDLESSNET_RELAY_HTTP_LISTEN": rcHTTP, "ENDLESSNET_RELAY_OTEL_ENDPOINT": telemetryEndpoint}
+	if directDNS {
+		rcEnv["ENDLESSNET_RELAY_DATABASE_URL"] = "postgres://relaytest@" + net.JoinHostPort("localhost", pgPort) + "/relay009"
+		rcEnv["ENDLESSNET_RELAY_DATABASE_VERIFY_DNS"] = "true"
+	}
 	migrate := exec.CommandContext(ctx, binaries["relay-coordinator"], "--migrate")
 	migrate.Env = envFor(rcEnv)
 	if output, e := migrate.CombinedOutput(); e != nil {

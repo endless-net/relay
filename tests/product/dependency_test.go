@@ -3,7 +3,10 @@
 package product
 
 import (
+	"context"
+	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"os"
@@ -14,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/endless-net/relay/internal/testkit"
 	wire "github.com/endless-net/relay/internal/wire"
 )
 
@@ -52,8 +56,16 @@ func assertNotReady(t *testing.T, address string) {
 	}
 }
 
-func TestRuntimeRegistryFailureAndExplicitRestart(t *testing.T) {
-	f := newFixture(t)
+func TestRuntimeRegistryFailureAndRecovery(t *testing.T) {
+	assertRuntimeRegistryRecovery(t, newFixture(t))
+}
+
+func TestRuntimeDirectDNSRegistryFailureAndRecovery(t *testing.T) {
+	assertRuntimeRegistryRecovery(t, newFixtureWithDatabaseProfile(t, "", "127.0.0.1:0", true))
+}
+
+func assertRuntimeRegistryRecovery(t *testing.T, f *fixture) {
+	t.Helper()
 	a, _ := f.client(t, 0, 0)
 	defer func() { _ = a.Close() }()
 	b, reader := f.client(t, 1, 1)
@@ -65,9 +77,11 @@ func TestRuntimeRegistryFailureAndExplicitRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitExited(t, f.registry, failedAt.Add(5*time.Second))
-	waitExited(t, f.coordinator, failedAt.Add(6*time.Second))
-	assertSafeFailure(t, f.coordinator, "registry_unavailable")
-	assertNotReady(t, f.coordinatorDiagnostics)
+	waitRegistryProbe(t, f, "/readyz", http.StatusServiceUnavailable)
+	waitRegistryProbe(t, f, "/healthz", http.StatusOK)
+	assertAlive(t, f.coordinator)
+	assertRegistryColdStartFails(t, f)
+	assertRegistryRejectsNewSession(t, f)
 	_ = b.SetReadDeadline(failedAt.Add(15 * time.Second))
 	for {
 		var message json.RawMessage
@@ -79,13 +93,15 @@ func TestRuntimeRegistryFailureAndExplicitRestart(t *testing.T) {
 			break
 		}
 	}
-	t.Logf("registry failure stopped Coordinator; existing session closed in %s", time.Since(failedAt))
+	t.Logf("registry failure kept Coordinator alive; existing session closed in %s", time.Since(failedAt))
 	if delay := time.Until(failedAt.Add(16 * time.Second)); delay > 0 {
 		time.Sleep(delay)
 	}
 	recoveredAt := time.Now()
 	oldDB := f.registry
 	f.registry = startChild(t, f.ctx, oldDB.command.Path, oldDB.command.Args[1:], oldDB.command.Env, f.dir)
+	// Fast shutdown releases the live Coordinator pool before fixture cleanup.
+	t.Cleanup(func() { _ = f.registry.command.Process.Signal(syscall.SIGINT) })
 	host, port, _ := net.SplitHostPort(f.registryAddress)
 	for {
 		probe := exec.CommandContext(f.ctx, filepath.Join(filepath.Dir(oldDB.command.Path), "pg_isready"), "-h", host, "-p", port, "-U", "relaytest", "-d", "relay009")
@@ -98,11 +114,11 @@ func TestRuntimeRegistryFailureAndExplicitRestart(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	oldCoordinator := f.coordinator
-	f.coordinator = startChild(t, f.ctx, oldCoordinator.command.Path, nil, oldCoordinator.command.Env, f.dir)
 	waitReady(t, f.ctx, f.coordinatorDiagnostics)
-	for _, address := range f.diagnostics {
+	assertAlive(t, f.coordinator)
+	for i, address := range f.diagnostics {
 		waitReady(t, f.ctx, address)
+		assertAlive(t, f.processes[i])
 	}
 	freshA, _ := f.client(t, 0, 0)
 	defer func() { _ = freshA.Close() }()
@@ -119,7 +135,80 @@ func TestRuntimeRegistryFailureAndExplicitRestart(t *testing.T) {
 	if elapsed := time.Since(recoveredAt); elapsed > 15*time.Second {
 		t.Fatal("registry recovery exceeded15s", elapsed)
 	} else {
-		t.Logf("after explicit registry/Coordinator restart recovered in %s", elapsed)
+		t.Logf("after registry restart, the same Coordinator process recovered in %s", elapsed)
+	}
+}
+
+func assertRegistryColdStartFails(t *testing.T, f *fixture) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 7*time.Second)
+	defer cancel()
+	probeAddress := freeAddress(t)
+	cmd := exec.CommandContext(ctx, f.coordinator.command.Path)
+	cmd.Dir = f.dir
+	for _, entry := range f.coordinator.command.Env {
+		if !strings.HasPrefix(entry, "ENDLESSNET_RELAY_CONTROL_LISTEN=") && !strings.HasPrefix(entry, "ENDLESSNET_RELAY_HTTP_LISTEN=") {
+			cmd.Env = append(cmd.Env, entry)
+		}
+	}
+	cmd.Env = append(cmd.Env, "ENDLESSNET_RELAY_CONTROL_LISTEN="+freeAddress(t), "ENDLESSNET_RELAY_HTTP_LISTEN="+probeAddress)
+	output, err := cmd.CombinedOutput()
+	var exit *exec.ExitError
+	if ctx.Err() != nil || !errors.As(err, &exit) || exit.ExitCode() != 1 || !strings.Contains(string(output), "startup_failed") {
+		t.Fatalf("cold start without registry: %v, output %s", err, output)
+	}
+	assertNotReady(t, probeAddress)
+}
+
+func assertAlive(t *testing.T, process *child) {
+	t.Helper()
+	select {
+	case <-process.exited:
+		t.Fatal("fixture process exited")
+	default:
+	}
+}
+
+func waitRegistryProbe(t *testing.T, f *fixture, path string, statusCode int) {
+	t.Helper()
+	client := &http.Client{Timeout: time.Second}
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
+		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+f.coordinatorDiagnostics+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if response, err := client.Do(request); err == nil {
+			_ = response.Body.Close()
+			if response.StatusCode == statusCode {
+				return
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("Coordinator %s did not report %d", path, statusCode)
+}
+
+func assertRegistryRejectsNewSession(t *testing.T, f *fixture) {
+	t.Helper()
+	conn, err := (&tls.Dialer{
+		NetDialer: &net.Dialer{Timeout: 2 * time.Second},
+		Config:    &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: f.pki.roots, ServerName: "localhost"},
+	}).DialContext(t.Context(), "tcp", f.public[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	credential, err := testkit.Sign(f.private, "fixture", "node-4", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+	if err := json.NewEncoder(conn).Encode(wire.ClientHello{Type: wire.MessageClientHello, ProtocolVersion: 1, Credential: *credential}); err != nil {
+		t.Fatal(err)
+	}
+	var rejected wire.Error
+	if err := json.NewDecoder(conn).Decode(&rejected); err != nil || rejected.Type != wire.MessageError {
+		t.Fatal("new session was not rejected during registry outage", err)
 	}
 }
 

@@ -30,25 +30,38 @@ import (
 )
 
 type Runtime struct {
-	c          Config
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
-	ready      atomic.Bool
-	failed     atomic.Bool
-	http       *http.Server
-	listeners  []net.Listener
-	grpc       *grpc.Server
-	workload   *tlsconfig.WorkloadRuntime
-	db         *store.Postgres
-	control    *relaycontrol.Client
-	client     *grpc.ClientConn
-	mesh       *mesh.Manager
-	data       *relay.Server
-	httpClient *http.Client
-	stats      *relay.Metrics
-	telemetry  *telemetry
-	fatal      func()
+	c               Config
+	ctx             context.Context
+	cancel          context.CancelFunc
+	wg              sync.WaitGroup
+	ready           atomic.Bool
+	registryHealthy atomic.Bool
+	failed          atomic.Bool
+	http            *http.Server
+	listeners       []net.Listener
+	grpc            *grpc.Server
+	workload        *tlsconfig.WorkloadRuntime
+	db              *store.Postgres
+	control         *relaycontrol.Client
+	client          *grpc.ClientConn
+	mesh            *mesh.Manager
+	data            *relay.Server
+	httpClient      *http.Client
+	stats           *relay.Metrics
+	telemetry       *telemetry
+	fatal           func()
+}
+
+func (c Config) databaseTLS(workload *tlsconfig.WorkloadRuntime) (tlsconfig.DatabaseTransport, error) {
+	if !c.DatabaseVerifyDNS {
+		config, err := workload.ClientTLSConfig(c.DatabaseIdentity)
+		return tlsconfig.DatabaseTransport{TLSConfig: config}, err
+	}
+	host, err := store.DirectPostgresHost(c.DSN)
+	if err != nil {
+		return tlsconfig.DatabaseTransport{}, err
+	}
+	return workload.DatabaseTLSConfig(c.DatabaseIdentity, host)
 }
 
 func App(c Config) *fx.App {
@@ -89,7 +102,7 @@ func (r *Runtime) Start(ctx context.Context) (result error) {
 		return errors.New("workload_tls")
 	}
 	if r.c.Role == "relay-coordinator" {
-		databaseTLS, tlsErr := r.workload.ClientTLSConfig(r.c.DatabaseIdentity)
+		databaseTLS, tlsErr := r.c.databaseTLS(r.workload)
 		if tlsErr != nil {
 			return errors.New("database_tls")
 		}
@@ -107,26 +120,37 @@ func (r *Runtime) Start(ctx context.Context) (result error) {
 		if _, e = a.RelayTrustBundle(ctx); e != nil {
 			return errors.New("trust_unavailable")
 		}
-		r.grpc = grpc.NewServer(grpc.Creds(tlsconfig.GRPCCredentials(serverTLS)), grpc.ConnectionTimeout(5*time.Second), grpc.MaxRecvMsgSize(147456), grpc.MaxConcurrentStreams(128), grpc.ChainUnaryInterceptor(r.unary, pb.RejectUnknownUnaryServerInterceptor))
+		r.grpc = grpc.NewServer(grpc.Creds(tlsconfig.GRPCCredentials(serverTLS)), grpc.ConnectionTimeout(5*time.Second), grpc.MaxRecvMsgSize(147456), grpc.MaxConcurrentStreams(128), grpc.ChainUnaryInterceptor(r.unary, pb.RejectUnknownUnaryServerInterceptor, r.requireRegistry))
 		relayapi.RegisterRelayControlServer(r.grpc, &relaycoordinator.Server{Store: r.db, Authorizer: a})
 		listener, e := r.listen(ctx, r.c.ControlListen, 64)
 		if e != nil {
 			return e
 		}
+		r.registryHealthy.Store(true)
 		r.worker("listener_failed", func() error { return r.grpc.Serve(listener) })
 		r.worker("fatal", func() error {
 			ticker := time.NewTicker(time.Second)
 			defer ticker.Stop()
+			var previousFailure string
 			for {
 				select {
 				case <-r.ctx.Done():
 					return nil
 				case <-ticker.C:
-					if e := r.db.Ping(r.ctx); e != nil {
-						return errors.New("registry_unavailable")
+					if err := r.db.Ping(r.ctx); err != nil {
+						r.registryHealthy.Store(false)
+						if reason := err.Error(); reason != previousFailure {
+							r.telemetry.log(reason, "")
+							previousFailure = reason
+						}
+						continue
 					}
 					if _, e := a.RelayTrustBundle(r.ctx); e != nil {
 						return errors.New("trust_unavailable")
+					}
+					if !r.registryHealthy.Swap(true) {
+						r.telemetry.log("registry_recovered", "")
+						previousFailure = ""
 					}
 				}
 			}
@@ -242,6 +266,9 @@ func (r *Runtime) Ready() bool {
 	if !r.ready.Load() || r.failed.Load() || r.workload == nil || !r.workload.Healthy() {
 		return false
 	}
+	if r.c.Role == "relay-coordinator" && !r.registryHealthy.Load() {
+		return false
+	}
 	if r.control != nil {
 		if !r.control.Ready() {
 			return false
@@ -340,7 +367,7 @@ func Run(role string, args []string) int {
 			return 1
 		}
 		defer func() { _ = runtime.Close() }()
-		transport, e := runtime.ClientTLSConfig(c.DatabaseIdentity)
+		transport, e := c.databaseTLS(runtime)
 		if e != nil {
 			return 1
 		}

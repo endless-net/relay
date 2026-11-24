@@ -21,13 +21,51 @@ import (
 )
 
 type staticWorkloadSource struct {
-	svid *x509svid.SVID
+	svid   *x509svid.SVID
+	bundle *x509bundle.Bundle
 }
 
 func (s staticWorkloadSource) GetX509SVID() (*x509svid.SVID, error) { return s.svid, nil }
 
-func (staticWorkloadSource) GetX509BundleForTrustDomain(spiffeid.TrustDomain) (*x509bundle.Bundle, error) {
+func (s staticWorkloadSource) GetX509BundleForTrustDomain(spiffeid.TrustDomain) (*x509bundle.Bundle, error) {
+	if s.bundle != nil {
+		return s.bundle, nil
+	}
 	return x509bundle.New(spiffeid.RequireTrustDomainFromString(DefaultTrustDomain)), nil
+}
+
+func TestDatabaseLeaseIncludesTrustAnchorsAndRechecksBothChains(t *testing.T) {
+	clientCA, clientKey := tlsTestCAWithLifetime(t, 15*time.Minute)
+	serverCA, serverKey := tlsTestCAWithLifetime(t, 30*time.Minute)
+	clientID := spiffeid.RequireFromString("spiffe://endlessnet.ru/service/relay-coordinator")
+	serverID := "spiffe://endlessnet.ru/dependency/postgresql"
+	clientDER, _, client := tlsTestCertificate(t, clientCA, clientKey, clientID.String())
+	_, _, server := tlsTestCertificate(t, serverCA, serverKey, serverID)
+	td := clientID.TrustDomain()
+	source := &staticWorkloadSource{
+		svid:   &x509svid.SVID{ID: clientID, Certificates: []*x509.Certificate{client}},
+		bundle: x509bundle.FromX509Authorities(td, []*x509.Certificate{clientCA, serverCA}),
+	}
+	runtime, err := newWorkloadRuntimeWithSource(source, clientID.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport, err := runtime.DatabaseTLSConfig(serverID, "coordinator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	local := tls.Certificate{Certificate: [][]byte{clientDER}}
+	state := tls.ConnectionState{PeerCertificates: []*x509.Certificate{server}}
+	expires, err := transport.VerifyLease(local, state)
+	if err != nil || !expires.Equal(clientCA.NotAfter) {
+		t.Fatalf("lease expires at %v, want %v, error: %v", expires, clientCA.NotAfter, err)
+	}
+	for _, remaining := range []*x509.Certificate{clientCA, serverCA} {
+		source.bundle = x509bundle.FromX509Authorities(td, []*x509.Certificate{remaining})
+		if _, err := transport.VerifyLease(local, state); err == nil {
+			t.Fatal("lease survived removal of one of its trust anchors")
+		}
+	}
 }
 
 func TestWorkloadRuntimeRequiresExactOwnIdentityAndPeerTrustDomain(t *testing.T) {
@@ -100,11 +138,16 @@ func TestTLSConfigsRequireTLS13AndExactWorkloadIdentity(t *testing.T) {
 
 func tlsTestCA(t *testing.T) (*x509.Certificate, *ecdsa.PrivateKey) {
 	t.Helper()
+	return tlsTestCAWithLifetime(t, time.Hour)
+}
+
+func tlsTestCAWithLifetime(t *testing.T, lifetime time.Duration) (*x509.Certificate, *ecdsa.PrivateKey) {
+	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	template := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "test-ca"}, NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(time.Hour), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
+	template := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "test-ca"}, NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(lifetime), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
 	raw, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	if err != nil {
 		t.Fatal(err)

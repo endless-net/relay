@@ -6,9 +6,15 @@ import (
 	"embed"
 	"errors"
 	"io/fs"
+	"net"
+	"net/url"
+	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	db "github.com/endless-net/relay/internal/store/storedb"
+	"github.com/endless-net/relay/internal/tlsconfig"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -19,23 +25,31 @@ import (
 var migrations embed.FS
 
 type Postgres struct {
-	pool *pgxpool.Pool
-	q    *db.Queries
+	pool         *pgxpool.Pool
+	q            *db.Queries
+	stopRotation context.CancelFunc
+	rotationDone chan struct{}
 }
 
-func OpenPostgres(ctx context.Context, dsn string, transport *tls.Config) (*Postgres, error) {
-	c, e := pgxpool.ParseConfig(dsn)
+func OpenPostgres(ctx context.Context, dsn string, transport tlsconfig.DatabaseTransport) (*Postgres, error) {
+	input, err := databaseDSN(dsn, transport.TLSConfig)
+	if err != nil {
+		return nil, err
+	}
+	c, e := pgxpool.ParseConfig(input)
 	if e != nil {
 		return nil, errors.New("registry_config")
 	}
-	if e = secureConfig(c.ConnConfig, transport); e != nil {
+	if e = secureConfig(c.ConnConfig, transport.TLSConfig); e != nil {
 		return nil, e
 	}
 	c.ConnConfig.Tracer = queryTracer{}
-	c.BeforeConnect = freezeIdentity
-	c.AfterConnect = bindDatabasePeer
-	c.PrepareConn = func(_ context.Context, conn *pgx.Conn) (bool, error) { return reusableIdentity(conn), nil }
-	c.AfterRelease = reusableIdentity
+	c.BeforeConnect = transportFreezer(transport)
+	if transport.VerifyLease == nil {
+		c.AfterConnect = bindDatabasePeer
+	}
+	c.AfterRelease = func(conn *pgx.Conn) bool { return reusableIdentity(conn, transport) }
+	c.PrepareConn = func(_ context.Context, conn *pgx.Conn) (bool, error) { return c.AfterRelease(conn), nil }
 	c.MaxConns = 16
 	c.MinConns = 0
 	c.ConnConfig.ConnectTimeout = 2 * time.Second
@@ -48,20 +62,37 @@ func OpenPostgres(ctx context.Context, dsn string, transport *tls.Config) (*Post
 		p.Close()
 		return nil, e
 	}
+	if transport.VerifyLease != nil {
+		rotation, cancel := context.WithCancel(context.Background())
+		x.stopRotation = cancel
+		x.rotationDone = make(chan struct{})
+		go func() {
+			defer close(x.rotationDone)
+			x.refreshRegistryPool(rotation, c, transport)
+		}()
+	}
 	return x, nil
 }
 
 // Migrate is an explicit domain operation, separate from runtime startup.
-func Migrate(ctx context.Context, dsn string, transport *tls.Config) error {
-	c, e := pgx.ParseConfig(dsn)
+func Migrate(ctx context.Context, dsn string, transport tlsconfig.DatabaseTransport) error {
+	input, err := databaseDSN(dsn, transport.TLSConfig)
+	if err != nil {
+		return err
+	}
+	c, e := pgx.ParseConfig(input)
 	if e != nil {
 		return errors.New("registry_config")
 	}
-	if e = secureConfig(c, transport); e != nil {
+	if e = secureConfig(c, transport.TLSConfig); e != nil {
 		return e
 	}
 	c.ConnectTimeout = 2 * time.Second
-	pool := stdlib.OpenDB(*c, stdlib.OptionBeforeConnect(freezeIdentity), stdlib.OptionAfterConnect(bindDatabasePeer))
+	options := []stdlib.OptionOpenDB{stdlib.OptionBeforeConnect(transportFreezer(transport))}
+	if transport.VerifyLease == nil {
+		options = append(options, stdlib.OptionAfterConnect(bindDatabasePeer))
+	}
+	pool := stdlib.OpenDB(*c, options...)
 	defer func() { _ = pool.Close() }()
 	pool.SetMaxOpenConns(1)
 
@@ -73,19 +104,35 @@ func Migrate(ctx context.Context, dsn string, transport *tls.Config) error {
 	return e
 }
 func migrationsSubFS() fs.FS { s, _ := fs.Sub(migrations, "migrations"); return s }
-func (p *Postgres) Close()   { p.pool.Close() }
+func (p *Postgres) Close() {
+	if p.stopRotation != nil {
+		p.stopRotation()
+		<-p.rotationDone
+	}
+	p.pool.Close()
+}
 func (p *Postgres) Ping(ctx context.Context) error {
-	ctx, c := context.WithTimeout(ctx, 2*time.Second)
-	defer c()
-	started := time.Now()
-	observed, e := p.q.Clock(ctx)
-	if e != nil || observed.Before(started.Add(-time.Second)) || observed.After(time.Now().Add(time.Second)) {
-		return errors.New("registry_clock_untrusted")
-	}
-	if e := p.pool.Ping(ctx); e != nil {
-		return errors.New("registry_unavailable")
-	}
-	return nil
+	return checkRegistry(ctx, p.ping)
+}
+
+func (p *Postgres) ping(ctx context.Context) error {
+	return p.pool.AcquireFunc(ctx, func(conn *pgxpool.Conn) error {
+		started := time.Now()
+		readiness, err := db.New(conn).RegistryReadiness(ctx)
+		if registryProbeError(err) == errRegistryTransport {
+			_ = conn.Conn().Close(ctx)
+		}
+		if err != nil {
+			return err
+		}
+		if !registryClockWithinWindow(started, readiness.ObservedAt, time.Now()) {
+			return errRegistryClock
+		}
+		if !readiness.Permitted {
+			return errRegistryUnavailable
+		}
+		return nil
+	})
 }
 func (p *Postgres) RegisterInstance(ctx context.Context, i Instance, ttl time.Duration) ([]Instance, time.Time, error) {
 	if e := validateInstance(i); e != nil {
@@ -234,9 +281,75 @@ func rollback(tx pgx.Tx) func() {
 	}
 }
 
+var databaseDNSLabel = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$`)
+
+// DirectPostgresHost accepts one certificate-authenticated PostgreSQL DNS target.
+func DirectPostgresHost(dsn string) (string, error) {
+	parsed, err := url.Parse(dsn)
+	if err != nil || (parsed.Scheme != "postgres" && parsed.Scheme != "postgresql") ||
+		parsed.User == nil || parsed.User.Username() == "" || parsed.Fragment != "" ||
+		parsed.Path == "" || parsed.Path == "/" || strings.Contains(parsed.Path[1:], "/") {
+		return "", errors.New("registry_config")
+	}
+	host := parsed.Hostname()
+	if len(host) > 253 || net.ParseIP(host) != nil {
+		return "", errors.New("registry_config")
+	}
+	for _, label := range strings.Split(host, ".") {
+		if !databaseDNSLabel.MatchString(label) {
+			return "", errors.New("registry_config")
+		}
+	}
+	if _, present := parsed.User.Password(); present {
+		return "", errors.New("registry_config")
+	}
+	params, err := url.ParseQuery(parsed.RawQuery)
+	if err != nil {
+		return "", errors.New("registry_config")
+	}
+	for key, values := range params {
+		if key != "sslmode" || len(values) != 1 || (values[0] != "require" && values[0] != "verify-full") {
+			return "", errors.New("registry_config")
+		}
+	}
+	return host, nil
+}
+
+func databaseDSN(dsn string, transport *tls.Config) (string, error) {
+	if transport == nil || transport.ServerName == "" {
+		return dsn, nil
+	}
+	host, err := DirectPostgresHost(dsn)
+	if err != nil || host != transport.ServerName || os.Getenv("PGSERVICE") != "" {
+		return "", errors.New("registry_config")
+	}
+	parsed, _ := url.Parse(dsn)
+	if parsed.Port() == "" {
+		parsed.Host = net.JoinHostPort(host, "5432")
+	}
+	// Use TLS from Workload API, not pgx's ambient TLS files. secureConfig
+	// installs verified TLS before the returned configuration can open a socket.
+	parsed.RawQuery = (url.Values{
+		"sslmode": {"disable"}, "password": {""}, "passfile": {""},
+		"target_session_attrs": {"any"}, "sslnegotiation": {"postgres"},
+		"require_auth": {"none"}, "channel_binding": {"disable"},
+		"min_protocol_version": {"3.0"}, "max_protocol_version": {"3.0"},
+		"connect_timeout": {"2"}, "options": {""},
+	}).Encode()
+	return parsed.String(), nil
+}
+
 func secureConfig(c *pgx.ConnConfig, transport *tls.Config) error {
 	if transport == nil || transport.MinVersion != tls.VersionTLS13 || transport.GetClientCertificate == nil || (transport.VerifyPeerCertificate == nil && transport.VerifyConnection == nil) {
 		return errors.New("registry_spiffe_tls_required")
+	}
+	if transport.ServerName != "" {
+		if c.Host != transport.ServerName || c.Password != "" {
+			return errors.New("registry_config")
+		}
+		c.SSLNegotiation = "postgres"
+		c.RequireAuth, c.ChannelBinding = "none", "disable"
+		c.RuntimeParams = map[string]string{}
 	}
 	c.TLSConfig = transport.Clone()
 	c.Fallbacks = nil

@@ -56,6 +56,13 @@ func (r *Runtime) listen(ctx context.Context, address string, limit int) (net.Li
 	return bounded, nil
 }
 
+func (r *Runtime) requireRegistry(ctx context.Context, request any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	if !r.registryHealthy.Load() {
+		return nil, status.Error(codes.Unavailable, "relay coordinator store unavailable")
+	}
+	return handler(ctx, request)
+}
+
 var rpcPeerSlots = make(chan struct{}, 64)
 var rpcLifeSlots = make(chan struct{}, 64)
 

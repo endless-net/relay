@@ -64,17 +64,6 @@ func (q *Queries) ActiveSessionCount(ctx context.Context, arg ActiveSessionCount
 	return count, err
 }
 
-const clock = `-- name: Clock :one
-SELECT clock_timestamp()::timestamptz
-`
-
-func (q *Queries) Clock(ctx context.Context) (time.Time, error) {
-	row := q.db.QueryRow(ctx, clock)
-	var column_1 time.Time
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
 const heartbeat = `-- name: Heartbeat :one
 UPDATE relay_instances SET lease_expires_at=$1
 WHERE relay_id=$2 AND boot_id=$3
@@ -239,6 +228,32 @@ func (q *Queries) Register(ctx context.Context, arg RegisterParams) (RelayInstan
 		&i.MeshAddr,
 		&i.LeaseExpiresAt,
 	)
+	return i, err
+}
+
+const registryReadiness = `-- name: RegistryReadiness :one
+SELECT clock_timestamp()::timestamptz AS observed_at,
+    (has_table_privilege('relay_instances', 'SELECT')
+    AND has_table_privilege('relay_instances', 'INSERT')
+    AND has_table_privilege('relay_instances', 'UPDATE')
+    AND has_table_privilege('relay_instance_boots', 'SELECT')
+    AND has_table_privilege('relay_instance_boots', 'INSERT')
+    AND has_table_privilege('node_session_leases', 'SELECT')
+    AND has_table_privilege('node_session_leases', 'INSERT')
+    AND has_table_privilege('node_session_leases', 'UPDATE')
+    AND (has_sequence_privilege('relay_epoch_seq', 'USAGE')
+        OR has_sequence_privilege('relay_epoch_seq', 'UPDATE')))::boolean AS permitted
+`
+
+type RegistryReadinessRow struct {
+	ObservedAt time.Time
+	Permitted  bool
+}
+
+func (q *Queries) RegistryReadiness(ctx context.Context) (RegistryReadinessRow, error) {
+	row := q.db.QueryRow(ctx, registryReadiness)
+	var i RegistryReadinessRow
+	err := row.Scan(&i.ObservedAt, &i.Permitted)
 	return i, err
 }
 
