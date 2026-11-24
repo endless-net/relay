@@ -38,11 +38,10 @@ lease и прекращение потоков остаются отдельны
 `DecodeStrict` сам по себе не обещает отбрасывать duplicate JSON keys; strict
 fixture loader не является доказательством production decoder behavior.
 
-Проверка из корня workspace в Ubuntu 26.04 с закреплёнными зависимостями
-`jsonschema==4.25.1`, `referencing==0.37.0`:
+Проверка из корня Relay в Ubuntu 26.04:
 
 ```bash
-python3 services/relay/api/checks/verify_public_wire.py
+(cd api && go test -short -v ./checks)
 ```
 
 [`fixtures/cases.json`](fixtures/cases.json) связывает shape cases с `$defs`;

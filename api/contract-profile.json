@@ -14,7 +14,7 @@
   "schema_id": "urn:endlessnet:relay:public-wire:v1",
   "fixture_manifest": "fixtures/cases.json",
   "wire_vectors": "wire-vectors.json",
-  "offline_checker": "checks/verify_public_wire.py",
+  "offline_checker": "checks/public_wire_test.go",
   "wire": {
     "endpoint_protocol": "relay-v1-tls",
     "version": 1,

@@ -61,7 +61,7 @@ Revoke Relay-пути≤15с — цель приёмки. Перед отпра�
 
 ## Проверка и ограничения
 
-Базовый unit-only CI: [AGENTS.md](AGENTS.md), `python3 -B scripts/ci.py check`.
+Базовый unit-only CI: [AGENTS.md](AGENTS.md), `go run ./scripts/ci check`.
 Для private producer API нужен protected repository-scoped read-only secret
 `PRODUCER_API_READ_TOKEN`; отсутствие доступа завершает fetch/check ошибкой.
 External PR получает пустой secret, без fallback на local checkout.
